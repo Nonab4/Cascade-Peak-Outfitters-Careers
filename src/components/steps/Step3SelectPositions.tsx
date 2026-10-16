@@ -4,14 +4,13 @@ import {
   Check,
   CheckCircle2,
   MapPin,
-  DollarSign,
   ChevronRight,
   ChevronDown,
-  Sparkles,
   ArrowRight,
   ArrowLeft,
   Search,
   Filter,
+  Info,
 } from 'lucide-react';
 import { JobPosition, ApplicantData } from '../../types/application';
 import { AVAILABLE_POSITIONS } from '../../data/positions';
@@ -47,15 +46,17 @@ export const Step3SelectPositions: React.FC<Step3SelectPositionsProps> = ({
     return matchesSearch && matchesDept;
   });
 
-  // Calculate skill matches for each position based on applicant extracted skills
-  const getSkillMatch = (pos: JobPosition) => {
-    if (!applicantData.skills || applicantData.skills.length === 0) return { matches: [], percentage: 0 };
+  // Calculate matching keywords (informational only - NO PERCENTAGES)
+  const getMatchingKeywords = (pos: JobPosition) => {
+    if (!applicantData.skills || applicantData.skills.length === 0) return [];
     const applicantSkillsLower = applicantData.skills.map((s) => s.toLowerCase());
-    const matching = pos.relevantSkills.filter((reqSkill) =>
-      applicantSkillsLower.some((candSkill) => candSkill.includes(reqSkill.toLowerCase()) || reqSkill.toLowerCase().includes(candSkill))
+    return pos.relevantSkills.filter((reqSkill) =>
+      applicantSkillsLower.some(
+        (candSkill) =>
+          candSkill.includes(reqSkill.toLowerCase()) ||
+          reqSkill.toLowerCase().includes(candSkill)
+      )
     );
-    const percentage = Math.round((matching.length / Math.max(pos.relevantSkills.length, 1)) * 100);
-    return { matches: matching, percentage };
   };
 
   const isSelected = (posId: string) => selectedPositions.some((p) => p.id === posId);
@@ -69,13 +70,13 @@ export const Step3SelectPositions: React.FC<Step3SelectPositionsProps> = ({
             <div className="flex items-center gap-2 text-xs font-semibold text-emerald-800 tracking-wide uppercase">
               <span>Step 3 of 5</span>
               <span aria-hidden="true">·</span>
-              <span>Opportunity Selection</span>
+              <span>Position Selection</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-bold text-stone-900 mt-1 font-['Plus_Jakarta_Sans'] tracking-tight">
-              Select Desired Positions
+              Select Positions of Interest
             </h2>
             <p className="text-stone-600 text-sm mt-1 max-w-2xl">
-              Cascade Peak Outfitters allows you to apply for multiple roles across retail outposts, logistics, marketing, and strategy with a single submission.
+              Applicants may apply for one or more available roles at Cascade Peak Outfitters. Select all positions matching your background and career goals.
             </p>
           </div>
 
@@ -93,7 +94,7 @@ export const Step3SelectPositions: React.FC<Step3SelectPositionsProps> = ({
             <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search roles or departments..."
+              placeholder="Search positions..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-stone-300 focus:border-emerald-700 bg-white"
@@ -103,7 +104,7 @@ export const Step3SelectPositions: React.FC<Step3SelectPositionsProps> = ({
           <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
             <Filter className="w-3.5 h-3.5 text-stone-400 shrink-0 hidden sm:block" />
             <div className="flex items-center gap-1.5">
-              {departments.slice(0, 3).map((dept) => (
+              {departments.slice(0, 4).map((dept) => (
                 <button
                   key={dept}
                   type="button"
@@ -127,7 +128,7 @@ export const Step3SelectPositions: React.FC<Step3SelectPositionsProps> = ({
         {filteredPositions.map((position) => {
           const selected = isSelected(position.id);
           const isExpanded = expandedPositionId === position.id;
-          const { matches, percentage } = getSkillMatch(position);
+          const matchingKeywords = getMatchingKeywords(position);
 
           return (
             <div
@@ -168,30 +169,23 @@ export const Step3SelectPositions: React.FC<Step3SelectPositionsProps> = ({
                         {position.department}
                       </p>
 
-                      <div className="flex flex-wrap items-center gap-y-1 gap-x-4 text-xs text-stone-600 mt-2.5">
-                        <span className="flex items-center gap-1">
-                          <MapPin className="w-3.5 h-3.5 text-stone-400" />
-                          <span>{position.location}</span>
-                        </span>
-                        <span className="flex items-center gap-1 font-mono text-stone-800 font-medium">
-                          <DollarSign className="w-3.5 h-3.5 text-stone-400" />
-                          <span>{position.salaryRange}</span>
-                        </span>
+                      <div className="flex items-center gap-2 text-xs text-stone-600 mt-2">
+                        <MapPin className="w-3.5 h-3.5 text-stone-400" />
+                        <span>{position.location}</span>
                       </div>
 
-                      <p className="text-xs text-stone-600 mt-2.5 leading-relaxed max-w-3xl">
+                      <p className="text-xs text-stone-600 mt-2 leading-relaxed max-w-3xl">
                         {position.description}
                       </p>
 
-                      {/* Skill alignment chip if candidate has matching skills */}
-                      {matches.length > 0 && (
-                        <div className="mt-3 flex items-center gap-2 text-xs">
-                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-900 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
-                            <Sparkles className="w-3 h-3 text-emerald-700" />
-                            <span>{matches.length} Skill Match ({percentage}%)</span>
+                      {/* Informational Matching Keywords (explicitly stated not used to rank) */}
+                      {matchingKeywords.length > 0 && (
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                          <span className="text-[11px] text-stone-600 font-medium bg-stone-100 px-2.5 py-1 rounded border border-stone-200">
+                            Shared Keywords in CV: {matchingKeywords.join(', ')}
                           </span>
-                          <span className="text-stone-400 text-[11px] hidden sm:inline">
-                            · Aligns with {matches.slice(0, 3).join(', ')}
+                          <span className="text-[10px] text-stone-400 italic">
+                            (Informational only — not used to rank or evaluate applicants)
                           </span>
                         </div>
                       )}

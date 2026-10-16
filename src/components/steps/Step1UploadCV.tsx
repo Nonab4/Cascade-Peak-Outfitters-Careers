@@ -59,74 +59,101 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
     }
   };
 
+  const readFileAsBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // strip data:*/*;base64, prefix
+        const base64 = result.includes(',') ? result.split(',')[1] : result;
+        resolve(base64);
+      };
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleSelectedFile = async (file: File) => {
     setUploadedFile(file);
     setExtractionError(null);
+    setSelectedSampleId(null);
 
-    // Read file contents
     try {
-      let textContent = '';
+      setIsExtracting(true);
+      setExtractionProgress('Reading document buffer...');
+
+      const base64Data = await readFileAsBase64(file);
+      let plainText = '';
       if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
-        textContent = await file.text();
-      } else {
-        // For PDF/DOCX or binary, read text if plain, or extract basic textual representation
-        textContent = await readFileAsTextFallback(file);
+        plainText = await file.text();
+        setRawText(plainText);
       }
 
-      setRawText(textContent);
-      await runExtraction(textContent, file.name, file.size);
-    } catch (err: any) {
-      console.error('File read error:', err);
-      setExtractionError('Could not read the uploaded document. Please upload a .txt, .pdf, or paste text.');
-    }
-  };
+      setExtractionProgress('Extracting candidate details with AI...');
+      const result = await parseResumeWithAI({
+        fileBase64: base64Data,
+        mimeType: file.type || (file.name.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream'),
+        fileName: file.name,
+        fileSize: file.size,
+        resumeText: plainText,
+      });
 
-  const readFileAsTextFallback = (file: File): Promise<string> => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result;
-        if (typeof result === 'string') {
-          // Clean out binary control characters if any
-          const sanitized = result.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, ' ');
-          resolve(sanitized.slice(0, 12000));
-        } else {
-          resolve(`Resume content from ${file.name}`);
-        }
-      };
-      reader.onerror = () => resolve(`Resume content from ${file.name}`);
-      reader.readAsText(file);
-    });
+      setExtractionProgress('Validating fields and flagging missing data...');
+      await new Promise((r) => setTimeout(r, 350));
+
+      onDataExtracted(result.data);
+    } catch (err: any) {
+      console.error('File extraction error:', err);
+      setExtractionError('Could not read the uploaded document. Please upload a valid PDF, DOCX, or text file.');
+    } finally {
+      setIsExtracting(false);
+      setExtractionProgress('');
+    }
   };
 
   const handleSampleSelect = async (sample: SampleResume) => {
     setSelectedSampleId(sample.id);
     setRawText(sample.rawText);
     setUploadedFile(new File([sample.rawText], `${sample.applicantName.toLowerCase().replace(/\s+/g, '_')}_cv.txt`, { type: 'text/plain' }));
-    await runExtraction(sample.rawText, `${sample.applicantName}_resume.txt`, sample.rawText.length);
+    
+    setIsExtracting(true);
+    setExtractionError(null);
+    setExtractionProgress('Loading sample candidate record...');
+
+    try {
+      const result = await parseResumeWithAI({
+        resumeText: sample.rawText,
+        fileName: `${sample.applicantName}_resume.txt`,
+        fileSize: sample.rawText.length,
+      });
+      onDataExtracted(result.data);
+    } catch (err) {
+      setExtractionError('Extraction encountered an error with sample record.');
+    } finally {
+      setIsExtracting(false);
+      setExtractionProgress('');
+    }
   };
 
-  const runExtraction = async (textToExtract: string, fileName: string, fileSize?: number) => {
-    if (!textToExtract.trim()) {
-      setExtractionError('Please provide resume text or upload a document.');
+  const handlePasteExtract = async () => {
+    if (!rawText.trim()) {
+      setExtractionError('Please paste resume text before extracting.');
       return;
     }
 
     setIsExtracting(true);
     setExtractionError(null);
-    setExtractionProgress('Reading document structure...');
+    setExtractionProgress('Extracting candidate details with AI...');
 
     try {
-      setExtractionProgress('Extracting candidate details with AI...');
-      const result = await parseResumeWithAI(textToExtract, fileName, fileSize);
-
-      setExtractionProgress('Validating fields and flagging missing data...');
-      await new Promise((r) => setTimeout(r, 450));
-
+      const result = await parseResumeWithAI({
+        resumeText: rawText,
+        fileName: 'pasted_resume.txt',
+        fileSize: rawText.length,
+      });
       onDataExtracted(result.data);
-    } catch (err: any) {
-      console.error('Extraction failed:', err);
-      setExtractionError('Extraction encountered an error. Please try again.');
+    } catch (err) {
+      setExtractionError('Extraction encountered an error with the pasted text.');
     } finally {
       setIsExtracting(false);
       setExtractionProgress('');
@@ -141,13 +168,13 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
           <div className="flex items-center gap-2 text-xs font-semibold text-emerald-800 tracking-wide uppercase">
             <span>Step 1 of 5</span>
             <span aria-hidden="true">·</span>
-            <span>Automated Intake</span>
+            <span>Intake Prototype</span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-bold text-stone-900 mt-1 font-['Plus_Jakarta_Sans'] tracking-tight">
             Upload Your Resume or CV
           </h2>
           <p className="text-stone-600 text-sm sm:text-base mt-2 leading-relaxed">
-            Cascade Peak Outfitters uses intelligent resume parsing to save you time. Our system extracts your contact information, work history, education, and skills into your application dossier.
+            Cascade Peak Outfitters receives about 4,800 applications per year. This prototype is designed to reduce manual data entry and applicant drop-off by automatically extracting your contact information, work history, education, and skills.
           </p>
 
           <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-stone-500 pt-3 border-t border-stone-100">
@@ -157,11 +184,11 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
             </div>
             <div className="flex items-center gap-1.5 text-stone-700">
               <Zap className="w-4 h-4 text-emerald-700" />
-              <span>Instant extraction in &lt; 2 seconds</span>
+              <span>Native PDF and Word (DOCX) reading</span>
             </div>
             <div className="flex items-center gap-1.5 text-stone-700">
               <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-              <span>Editable in Step 2</span>
+              <span>Review and edit in Step 2</span>
             </div>
           </div>
         </div>
@@ -178,7 +205,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
               }`}
             >
               <UploadCloud className="w-4 h-4" />
-              <span>Upload Document</span>
+              <span>Upload Document (PDF / DOCX)</span>
             </button>
             <button
               onClick={() => setActiveTab('samples')}
@@ -189,7 +216,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
               }`}
             >
               <FileCode className="w-4 h-4" />
-              <span>Try Sample CVs (1-Click Test)</span>
+              <span>Sample Resumes (Quick Test)</span>
             </button>
             <button
               onClick={() => setActiveTab('paste')}
@@ -211,7 +238,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf,.docx,.txt,.doc,text/plain"
+              accept=".pdf,.docx,.doc,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               className="hidden"
               onChange={handleFileInputChange}
             />
@@ -235,7 +262,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
                 Drag and drop your CV or resume here
               </h3>
               <p className="text-xs sm:text-sm text-stone-500 mt-1">
-                Supports PDF, DOCX, and TXT files (up to 10MB)
+                Accepts real PDF documents, DOCX Word files, and plain text (up to 15MB)
               </p>
               <div className="mt-5">
                 <button
@@ -264,7 +291,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    runExtraction(rawText, uploadedFile.name, uploadedFile.size);
+                    handleSelectedFile(uploadedFile);
                   }}
                   disabled={isExtracting}
                   className="px-3 py-1.5 text-xs font-medium text-emerald-900 bg-emerald-200/80 hover:bg-emerald-300 rounded flex items-center gap-1.5 transition-colors"
@@ -281,7 +308,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
         {activeTab === 'samples' && (
           <div className="mt-6 space-y-4">
             <div className="p-3 bg-stone-100/80 rounded-lg text-xs text-stone-700">
-              Select one of these realistic resumes to immediately test the recruitment parser without having to locate a file on your device.
+              Select one of these realistic resumes to immediately test the recruitment intake workflow without having to find a file on your device.
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -340,7 +367,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
           <div className="mt-6 space-y-4">
             <div>
               <label htmlFor="resume-textarea" className="block text-xs font-semibold text-stone-700 mb-1">
-                Paste your resume text below:
+                Paste resume text below:
               </label>
               <textarea
                 id="resume-textarea"
@@ -355,7 +382,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
             <div className="flex justify-end">
               <button
                 type="button"
-                onClick={() => runExtraction(rawText, 'pasted_resume.txt', rawText.length)}
+                onClick={handlePasteExtract}
                 disabled={!rawText.trim() || isExtracting}
                 className="px-5 py-2.5 text-xs font-semibold text-white bg-emerald-800 hover:bg-emerald-900 rounded-lg shadow-xs transition-colors flex items-center gap-2 disabled:opacity-50"
               >
@@ -372,7 +399,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
             <RefreshCw className="w-5 h-5 text-emerald-800 animate-spin" />
             <div className="flex-1">
               <p className="text-xs font-bold text-emerald-900">
-                {extractionProgress || 'Extracting applicant information with Gemini AI...'}
+                {extractionProgress || 'Extracting applicant information with AI...'}
               </p>
               <p className="text-[11px] text-emerald-700 mt-0.5">
                 Parsing structured fields without inventing missing details.
@@ -393,7 +420,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
         )}
       </div>
 
-      {/* If data has already been parsed and user navigates back to Step 1 */}
+      {/* Currently loaded data banner if applicant already parsed */}
       {existingData && existingData.fullName && (
         <div className="bg-stone-50 rounded-xl border border-stone-200 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">

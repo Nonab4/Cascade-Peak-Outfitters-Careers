@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import {
-  FileCheck2,
   Edit3,
-  CheckCircle2,
   AlertCircle,
   Briefcase,
   GraduationCap,
@@ -10,10 +8,10 @@ import {
   ArrowLeft,
   Send,
   Loader2,
-  ShieldCheck,
   Building,
   MapPin,
   Clock,
+  Info,
 } from 'lucide-react';
 import { ApplicantData, JobPosition } from '../../types/application';
 
@@ -60,8 +58,15 @@ export const Step4FinalReview: React.FC<Step4FinalReviewProps> = ({
             Final Application Review
           </h2>
           <p className="text-stone-600 text-sm mt-1 max-w-3xl leading-relaxed">
-            Please carefully review all extracted applicant information and selected positions below. You can make corrections to any section before certifying and finalizing your submission.
+            Please carefully review all extracted applicant information and selected positions below. You can make corrections to any section before certifying and finalizing your prototype submission.
           </p>
+
+          <div className="mt-4 p-3 bg-stone-100 rounded-lg text-xs text-stone-600 flex items-start gap-2">
+            <Info className="w-4 h-4 text-stone-500 shrink-0 mt-0.5" />
+            <span>
+              <strong>Front-End Prototype Notice:</strong> Submitting will format your validated dossier so it is structured and ready for future database or ATS integration. No live database transmission occurs.
+            </span>
+          </div>
         </div>
       </div>
 
@@ -96,18 +101,14 @@ export const Step4FinalReview: React.FC<Step4FinalReviewProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-stone-500 mt-0.5">{pos.department}</p>
-                <div className="flex items-center gap-3 text-[11px] text-stone-500 mt-1">
-                  <span className="flex items-center gap-1">
-                    <MapPin className="w-3 h-3 text-stone-400" />
-                    <span>{pos.location}</span>
-                  </span>
-                  <span>·</span>
-                  <span className="font-mono text-stone-700 font-medium">{pos.salaryRange}</span>
+                <div className="flex items-center gap-2 text-[11px] text-stone-500 mt-1">
+                  <MapPin className="w-3 h-3 text-stone-400" />
+                  <span>{pos.location}</span>
                 </div>
               </div>
 
               <span className="text-xs font-medium text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200 self-start sm:self-center">
-                Ready for Routing
+                Ready for ATS Formatting
               </span>
             </div>
           ))}
@@ -140,7 +141,7 @@ export const Step4FinalReview: React.FC<Step4FinalReviewProps> = ({
               Full Legal Name
             </span>
             <span className="text-sm font-bold text-stone-900 block mt-0.5">
-              {applicantData.fullName || 'Not provided'}
+              {applicantData.fullName}
             </span>
           </div>
 
@@ -149,7 +150,7 @@ export const Step4FinalReview: React.FC<Step4FinalReviewProps> = ({
               Email Address
             </span>
             <span className="text-sm font-medium text-stone-900 block mt-0.5">
-              {applicantData.email || 'Not provided'}
+              {applicantData.email}
             </span>
           </div>
 
@@ -158,7 +159,7 @@ export const Step4FinalReview: React.FC<Step4FinalReviewProps> = ({
               Phone Number
             </span>
             <span className="text-sm font-medium text-stone-900 block mt-0.5 font-mono">
-              {applicantData.phone || <span className="text-amber-700 font-sans italic">Not provided</span>}
+              {applicantData.phone}
             </span>
           </div>
 
@@ -167,7 +168,7 @@ export const Step4FinalReview: React.FC<Step4FinalReviewProps> = ({
               Location
             </span>
             <span className="text-sm font-medium text-stone-900 block mt-0.5">
-              {applicantData.location || <span className="text-amber-700 italic">Not provided</span>}
+              {applicantData.location}
             </span>
           </div>
 
@@ -205,26 +206,22 @@ export const Step4FinalReview: React.FC<Step4FinalReviewProps> = ({
         </div>
 
         <div className="p-6 space-y-4">
-          {applicantData.workExperience.length === 0 ? (
-            <p className="text-xs text-stone-500 italic">No previous work experience recorded.</p>
-          ) : (
-            applicantData.workExperience.map((work) => (
-              <div key={work.id} className="pb-4 last:pb-0 border-b last:border-0 border-stone-100">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between">
-                  <h4 className="text-sm font-bold text-stone-900">{work.title}</h4>
-                  <span className="text-xs font-mono text-stone-500">
-                    {work.startDate} {work.startDate && (work.endDate || 'Present') ? '—' : ''} {work.endDate || (work.current ? 'Present' : '')}
-                  </span>
-                </div>
-                <p className="text-xs font-medium text-emerald-800">{work.company}</p>
-                {work.description && (
-                  <p className="text-xs text-stone-600 mt-1.5 whitespace-pre-line leading-relaxed">
-                    {work.description}
-                  </p>
-                )}
+          {applicantData.workExperience.map((work) => (
+            <div key={work.id} className="pb-4 last:pb-0 border-b last:border-0 border-stone-100">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between">
+                <h4 className="text-sm font-bold text-stone-900">{work.title}</h4>
+                <span className="text-xs font-mono text-stone-500">
+                  {work.startDate} {work.startDate && (work.endDate || 'Present') ? '—' : ''} {work.endDate || (work.current ? 'Present' : '')}
+                </span>
               </div>
-            ))
-          )}
+              <p className="text-xs font-medium text-emerald-800">{work.company}</p>
+              {work.description && (
+                <p className="text-xs text-stone-600 mt-1.5 whitespace-pre-line leading-relaxed">
+                  {work.description}
+                </p>
+              )}
+            </div>
+          ))}
         </div>
       </div>
 
@@ -236,7 +233,7 @@ export const Step4FinalReview: React.FC<Step4FinalReviewProps> = ({
             <div className="flex items-center gap-2">
               <GraduationCap className="w-4 h-4 text-emerald-800" />
               <h3 className="text-sm font-bold text-stone-900 font-['Plus_Jakarta_Sans']">
-                Education
+                Education ({applicantData.education.length})
               </h3>
             </div>
             <button
@@ -250,25 +247,15 @@ export const Step4FinalReview: React.FC<Step4FinalReviewProps> = ({
           </div>
 
           <div className="p-6 space-y-3">
-            {applicantData.education.length === 0 ? (
-              <p className="text-xs text-stone-500 italic">No education recorded.</p>
-            ) : (
-              applicantData.education.map((edu) => (
-                <div key={edu.id}>
-                  <h4 className="text-xs sm:text-sm font-bold text-stone-900">{edu.degree}</h4>
-                  <p className="text-xs text-stone-600">{edu.institution}</p>
-                  {edu.graduationYear ? (
-                    <p className="text-[11px] text-stone-400 font-mono mt-0.5">
-                      Graduated: {edu.graduationYear}
-                    </p>
-                  ) : (
-                    <p className="text-[11px] text-amber-700 italic mt-0.5">
-                      Year not specified
-                    </p>
-                  )}
-                </div>
-              ))
-            )}
+            {applicantData.education.map((edu) => (
+              <div key={edu.id}>
+                <h4 className="text-xs sm:text-sm font-bold text-stone-900">{edu.degree}</h4>
+                <p className="text-xs text-stone-600">{edu.institution}</p>
+                <p className="text-[11px] text-stone-500 font-mono mt-0.5">
+                  Graduation Year: {edu.graduationYear}
+                </p>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -278,7 +265,7 @@ export const Step4FinalReview: React.FC<Step4FinalReviewProps> = ({
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-emerald-800" />
               <h3 className="text-sm font-bold text-stone-900 font-['Plus_Jakarta_Sans']">
-                Skills & Certifications ({applicantData.skills.length})
+                Skills & Competencies ({applicantData.skills.length})
               </h3>
             </div>
             <button
@@ -329,7 +316,7 @@ export const Step4FinalReview: React.FC<Step4FinalReviewProps> = ({
               I certify and confirm that the extracted and reviewed information in this application is accurate, complete, and truthful to the best of my knowledge.
             </label>
             <p className="text-[11px] text-stone-500 mt-1">
-              By confirming, you authorize Cascade Peak Outfitters to review your candidacy for all selected positions and transmit your standardized dossier to store managers and HR directors.
+              Confirmation is required to finalize the application.
             </p>
 
             {showCertError && (
@@ -363,7 +350,7 @@ export const Step4FinalReview: React.FC<Step4FinalReviewProps> = ({
           {isSubmitting ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Finalizing Application...</span>
+              <span>Validating Dossier Format...</span>
             </>
           ) : (
             <>

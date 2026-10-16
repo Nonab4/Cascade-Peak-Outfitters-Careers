@@ -42,7 +42,6 @@ export interface JobPosition {
   department: string;
   location: string;
   workType: 'Full-Time' | 'Part-Time' | 'Trainee' | 'Contract';
-  salaryRange: string;
   description: string;
   keyResponsibilities: string[];
   requirements: string[];

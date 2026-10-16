@@ -21,22 +21,22 @@ export const Header: React.FC<HeaderProps> = ({ onShowBusinessGoals, showGoalsBa
                 Cascade Peak Outfitters
               </span>
               <span className="text-[11px] text-stone-400 font-mono tracking-wide">
-                Careers & Recruitment Portal
+                Recruitment Prototype
               </span>
             </div>
           </div>
 
-          {/* Zone 2: 4 clean single-line nav links */}
+          {/* Zone 2: clean single-line nav links */}
           <nav className="hidden md:flex items-center gap-7 text-xs font-medium text-stone-300">
             <a
-              href="#about-outfitters"
+              href="#about-portal"
               onClick={(e) => {
                 e.preventDefault();
-                alert('Cascade Peak Outfitters equips mountaineers, hikers, and trail runners across 34 Pacific Northwest outposts and regional headquarters.');
+                alert('Cascade Peak Outfitters Prototype: Tests automated CV extraction and structured applicant intake to address manual processing times and incomplete applications.');
               }}
               className="hover:text-emerald-300 transition-colors whitespace-nowrap"
             >
-              Outfitter Culture
+              Prototype Overview
             </a>
             <a
               href="#openings"
@@ -47,20 +47,10 @@ export const Header: React.FC<HeaderProps> = ({ onShowBusinessGoals, showGoalsBa
               }}
               className="hover:text-emerald-300 transition-colors whitespace-nowrap"
             >
-              Open Roles
-            </a>
-            <a
-              href="#benefits"
-              onClick={(e) => {
-                e.preventDefault();
-                alert('Benefits include 50% gear pro-deals, annual backcountry trail stipend, 401(k) matching, and comprehensive healthcare.');
-              }}
-              className="hover:text-emerald-300 transition-colors whitespace-nowrap"
-            >
-              Gear Stipend & Benefits
+              Available Roles (6)
             </a>
             <span className="text-stone-600">|</span>
-            <span className="text-emerald-400/90 font-mono text-[11px] whitespace-nowrap">
+            <span className="text-stone-400 font-mono text-[11px] whitespace-nowrap">
               Intake Volume: ~4,800/yr
             </span>
           </nav>
@@ -69,14 +59,14 @@ export const Header: React.FC<HeaderProps> = ({ onShowBusinessGoals, showGoalsBa
           <div className="flex items-center gap-3 shrink-0">
             <button
               onClick={onShowBusinessGoals}
-              className={`px-3.5 py-1.5 text-xs font-medium rounded transition-all whitespace-nowrap flex items-center gap-1.5 border ${
+              className={`px-3.5 py-1.5 text-xs font-medium rounded transition-all whitespace-nowrap flex items-center gap-1.5 border cursor-pointer ${
                 showGoalsBanner
                   ? 'bg-emerald-950 text-emerald-300 border-emerald-600/70'
                   : 'bg-stone-800 text-stone-200 border-stone-700 hover:bg-stone-700'
               }`}
             >
               <Compass className="w-3.5 h-3.5 text-emerald-400" />
-              <span>{showGoalsBanner ? 'Hide HR ROI Metrics' : 'HR Impact & ROI'}</span>
+              <span>{showGoalsBanner ? 'Hide Baseline Data' : 'Current Baselines'}</span>
             </button>
           </div>
         </div>

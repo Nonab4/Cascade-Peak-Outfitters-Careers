@@ -1,50 +1,81 @@
 import { ApplicantData, EducationItem, WorkExperienceItem } from '../types/application';
 
+export interface ParseResumeOptions {
+  resumeText?: string;
+  fileBase64?: string;
+  mimeType?: string;
+  fileName?: string;
+  fileSize?: number;
+}
+
+// Standardization & validation helpers
+export function standardizePhoneNumber(input: string): string {
+  const digits = input.replace(/\D/g, '');
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  if (digits.length === 11 && digits.startsWith('1')) {
+    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  return input;
+}
+
+export function isValidPhoneNumber(input: string): boolean {
+  const digits = input.replace(/\D/g, '');
+  return digits.length === 10 || (digits.length === 11 && digits.startsWith('1'));
+}
+
+export function isValidEmailAddress(input: string): boolean {
+  const regex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  return regex.test(input.trim());
+}
+
+export function isValidGraduationYear(year: string): boolean {
+  const y = parseInt(year.trim(), 10);
+  return !isNaN(y) && /^\d{4}$/.test(year.trim()) && y >= 1960 && y <= 2035;
+}
+
 export async function parseResumeWithAI(
-  resumeText: string,
-  fileName: string = 'resume.txt',
-  fileSize?: number
+  options: ParseResumeOptions
 ): Promise<{ data: ApplicantData; usedAI: boolean; notes?: string }> {
+  const { resumeText = '', fileBase64, mimeType, fileName = 'resume.txt', fileSize } = options;
+
   try {
     const response = await fetch('/api/extract-resume', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ resumeText, fileName }),
+      body: JSON.stringify({ resumeText, fileBase64, mimeType, fileName }),
     });
 
     if (response.ok) {
       const result = await response.json();
       if (result.success && result.data) {
         const raw = result.data;
-        const missingFields: string[] = Array.isArray(raw.missingFields) ? [...raw.missingFields] : [];
+        const missingFields: string[] = [];
 
-        // Validate presence of core fields and ensure missingFields list is exhaustive
-        if (!raw.fullName || !raw.fullName.trim()) {
-          if (!missingFields.includes('Full Name')) missingFields.push('Full Name');
-        }
-        if (!raw.email || !raw.email.trim()) {
-          if (!missingFields.includes('Email')) missingFields.push('Email');
-        }
-        if (!raw.phone || !raw.phone.trim()) {
-          if (!missingFields.includes('Phone Number')) missingFields.push('Phone Number');
-        }
-        if (!raw.location || !raw.location.trim()) {
-          if (!missingFields.includes('Location')) missingFields.push('Location');
-        }
+        // Validate presence of core fields and ensure missingFields list is strictly accurate
+        if (!raw.fullName || !raw.fullName.trim()) missingFields.push('Full Name');
+        if (!raw.email || !raw.email.trim() || !isValidEmailAddress(raw.email)) missingFields.push('Email Address');
+        if (!raw.phone || !raw.phone.trim() || !isValidPhoneNumber(raw.phone)) missingFields.push('Phone Number');
+        if (!raw.location || !raw.location.trim()) missingFields.push('Location');
+        
         if (!raw.education || raw.education.length === 0) {
-          if (!missingFields.includes('Education')) missingFields.push('Education');
+          missingFields.push('Education History');
         } else {
-          // Check if graduation year is missing
-          const hasMissingGradYear = raw.education.some((e: any) => !e.graduationYear || !e.graduationYear.trim());
-          if (hasMissingGradYear && !missingFields.includes('Graduation Year')) {
+          const hasMissingGradYear = raw.education.some(
+            (e: any) => !e.graduationYear || !isValidGraduationYear(e.graduationYear)
+          );
+          if (hasMissingGradYear) {
             missingFields.push('Graduation Year');
           }
         }
-        if (!raw.skills || raw.skills.length === 0) {
-          if (!missingFields.includes('Skills')) missingFields.push('Skills');
-        }
+
         if (!raw.workExperience || raw.workExperience.length === 0) {
-          if (!missingFields.includes('Work Experience')) missingFields.push('Work Experience');
+          missingFields.push('Work Experience');
+        }
+
+        if (!raw.skills || raw.skills.length === 0) {
+          missingFields.push('Skills');
         }
 
         const education: EducationItem[] = (raw.education || []).map((e: any, idx: number) => ({
@@ -52,7 +83,7 @@ export async function parseResumeWithAI(
           institution: e.institution || '',
           degree: e.degree || '',
           fieldOfStudy: e.fieldOfStudy || '',
-          graduationYear: e.graduationYear || '',
+          graduationYear: e.graduationYear && /^\d{4}$/.test(e.graduationYear) ? e.graduationYear : '',
           details: e.details || '',
           isExtracted: true,
         }));
@@ -68,25 +99,34 @@ export async function parseResumeWithAI(
           isExtracted: true,
         }));
 
+        const formattedPhone = raw.phone ? standardizePhoneNumber(raw.phone) : '';
+
         return {
           usedAI: true,
           notes: raw.extractionConfidenceNotes || 'Information extracted using Gemini 3.8 Flash model.',
           data: {
             fullName: raw.fullName || '',
             email: raw.email || '',
-            phone: raw.phone || '',
+            phone: formattedPhone,
             location: raw.location || '',
             summary: raw.summary || '',
             education,
             workExperience,
             skills: raw.skills || [],
             missingFields,
-            rawText: resumeText,
+            rawText: result.extractedText || resumeText,
             fileName,
             fileSize,
             extractedAt: new Date().toISOString(),
             extractionConfidenceNotes: raw.extractionConfidenceNotes,
           },
+        };
+      } else if (result.fallbackNeeded && result.extractedText) {
+        const fallbackData = fallbackHeuristicExtraction(result.extractedText, fileName, fileSize);
+        return {
+          data: fallbackData,
+          usedAI: false,
+          notes: 'Parsed via structured recruitment intake rules.',
         };
       }
     }
@@ -121,13 +161,13 @@ export function fallbackHeuristicExtraction(
     email = emailMatch[0];
   }
 
-  // 2. Detect Phone (Strict: only if actual digits format found)
+  // 2. Detect Phone
   const phoneMatch = text.match(/(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}/);
   if (phoneMatch) {
-    phone = phoneMatch[0];
+    phone = standardizePhoneNumber(phoneMatch[0]);
   }
 
-  // 3. Name (usually top 1-2 lines before email/phone)
+  // 3. Name (usually top lines before email/phone)
   for (let i = 0; i < Math.min(lines.length, 4); i++) {
     const line = lines[i];
     if (
@@ -172,7 +212,7 @@ export function fallbackHeuristicExtraction(
     const eduText = eduBlock[0];
     const uniMatch = eduText.match(/([A-Za-z\s]+(?:University|College|Institute|Academy)[A-Za-z\s,]*)/i);
     const degreeMatch = eduText.match(/(Bachelor[^\n,]+|Master[^\n,]+|Associate[^\n,]+|B\.?[AS]\.?[^\n,]*|M\.?[AS]\.?[^\n,]*|Ph\.?D[^\n,]*)/i);
-    const yearMatch = eduText.match(/(?:Graduated\s*:?\s*|Class of\s*|\b)(20\d\d|19\d\d)\b/i);
+    const yearMatch = eduText.match(/\b(20\d\d|19\d\d)\b/);
 
     if (uniMatch || degreeMatch) {
       education.push({
@@ -180,7 +220,7 @@ export function fallbackHeuristicExtraction(
         institution: uniMatch ? uniMatch[1].trim() : 'Higher Education Institution',
         degree: degreeMatch ? degreeMatch[1].trim() : 'Degree Completed',
         fieldOfStudy: '',
-        graduationYear: yearMatch ? yearMatch[1].trim() : '',
+        graduationYear: yearMatch && isValidGraduationYear(yearMatch[1]) ? yearMatch[1].trim() : '',
         details: '',
         isExtracted: true,
       });
@@ -199,7 +239,7 @@ export function fallbackHeuristicExtraction(
         const chunkLines = chunk.split('\n').map((c) => c.trim()).filter(Boolean);
         const header = chunkLines[0] || '';
         let title = header;
-        let company = 'Outfitter Retail Partner';
+        let company = 'Organization / Company';
         if (header.includes('|')) {
           const parts = header.split('|');
           title = parts[0].trim();
@@ -213,7 +253,6 @@ export function fallbackHeuristicExtraction(
         }
 
         const dateMatch = chunk.match(/(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+)?\d{4}\s*(?:-|–|to)\s*(?:Present|(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+)?\d{4})/i);
-
         const desc = chunkLines.slice(1).join('\n');
 
         workExperience.push({
@@ -230,15 +269,15 @@ export function fallbackHeuristicExtraction(
     });
   }
 
-  // 8. Missing Fields Check - STRICT: Flag anything not explicitly provided
+  // 8. Missing Fields Check - STRICT: Flag anything not explicitly provided or invalid
   const missingFields: string[] = [];
   if (!fullName) missingFields.push('Full Name');
-  if (!email) missingFields.push('Email');
-  if (!phone) missingFields.push('Phone Number');
+  if (!email || !isValidEmailAddress(email)) missingFields.push('Email Address');
+  if (!phone || !isValidPhoneNumber(phone)) missingFields.push('Phone Number');
   if (!location) missingFields.push('Location');
   if (education.length === 0) {
-    missingFields.push('Education');
-  } else if (!education[0].graduationYear) {
+    missingFields.push('Education History');
+  } else if (!education[0].graduationYear || !isValidGraduationYear(education[0].graduationYear)) {
     missingFields.push('Graduation Year');
   }
   if (workExperience.length === 0) missingFields.push('Work Experience');

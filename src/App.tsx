@@ -18,8 +18,7 @@ import {
   ApplicationStep,
   ApplicationSubmission,
 } from './types/application';
-import { AVAILABLE_POSITIONS } from './data/positions';
-import { Mountain, Compass, ShieldCheck, HeartHandshake } from 'lucide-react';
+import { Mountain, Compass, ShieldCheck, CheckCircle2 } from 'lucide-react';
 
 export default function App() {
   const [currentStep, setCurrentStep] = useState<ApplicationStep>(1);
@@ -87,8 +86,8 @@ export default function App() {
     if (!applicantData) return;
     setIsSubmitting(true);
 
-    // Simulate final ATS transmission latency (400ms)
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    // Format final standardized payload
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     const finalSubmission: ApplicationSubmission = {
       referenceId: `CPO-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -96,6 +95,7 @@ export default function App() {
       applicant: applicantData,
       selectedPositions,
       accuracyCertified: true,
+      notes: 'Front-end prototype submission. Standardized record formatted for future ATS/database integration.',
     };
 
     setSubmission(finalSubmission);
@@ -123,7 +123,7 @@ export default function App() {
         onShowBusinessGoals={() => setShowGoalsBanner(!showGoalsBanner)}
       />
 
-      {/* Business Impact ROI Strip */}
+      {/* Baseline Facts & Potential Value Banner */}
       {showGoalsBanner && (
         <BusinessImpactBanner onDismiss={() => setShowGoalsBanner(false)} />
       )}
@@ -150,66 +150,74 @@ export default function App() {
               />
             </div>
 
-            {/* Side Branding & Outfitter Culture Card */}
+            {/* Side Branding & Intake Objectives Card */}
             <div className="lg:col-span-4 space-y-6">
               <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs">
                 <div className="relative h-48 overflow-hidden bg-stone-900">
                   <img
                     src="/src/assets/images/hero_cascade_mountains_1792103902490.jpg"
                     alt="Cascade Mountains Pacific Northwest trail view"
-                    className="w-full h-full object-cover opacity-90 hover:scale-105 transition-transform duration-500"
+                    className="w-full h-full object-cover opacity-90"
                     referrerPolicy="no-referrer"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-stone-950/80 via-stone-950/20 to-transparent" />
                   <div className="absolute bottom-3 left-4 right-4 text-white">
                     <span className="text-[10px] font-mono text-emerald-300 uppercase tracking-widest block">
-                      Pacific Northwest Outfitter
+                      Cascade Peak Outfitters
                     </span>
                     <span className="text-sm font-bold font-['Plus_Jakarta_Sans']">
-                      Rooted in the Mountains Since 1984
+                      Recruitment Process Modernization
                     </span>
                   </div>
                 </div>
 
                 <div className="p-5 space-y-3">
                   <p className="text-xs text-stone-600 leading-relaxed">
-                    At Cascade Peak Outfitters, we outfit everyone from first-time day hikers to seasoned alpine guides. We value authentic backcountry enthusiasm, sustainable ethics, and customer care.
+                    Cascade Peak Outfitters specializes in outdoor apparel and equipment. This front-end prototype explores automated data extraction to streamline hiring operations and improve candidate experience.
                   </p>
 
                   <div className="pt-3 border-t border-stone-100 space-y-2 text-xs text-stone-700">
                     <div className="flex items-center gap-2">
                       <Compass className="w-4 h-4 text-emerald-800 shrink-0" />
-                      <span>34 Retail Outposts across WA, OR, ID</span>
+                      <span>~4,800 Applications Received Annually</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <ShieldCheck className="w-4 h-4 text-emerald-800 shrink-0" />
-                      <span>B-Corp Certified Sustainable Outdoor Gear</span>
+                      <span>No Hallucinated or Invented Information</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <HeartHandshake className="w-4 h-4 text-emerald-800 shrink-0" />
-                      <span>50% Gear Pro-Discount for all team members</span>
+                      <CheckCircle2 className="w-4 h-4 text-emerald-800 shrink-0" />
+                      <span>Standardized Applicant Data Format</span>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Recruitment Highlights */}
+              {/* Prototype Objectives Card */}
               <div className="bg-stone-900 text-stone-200 rounded-2xl p-5 border border-stone-800">
                 <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono">
-                  Why Apply With Us?
+                  Prototype Objectives
                 </h4>
                 <ul className="mt-3 space-y-2 text-xs text-stone-300">
                   <li className="flex items-start gap-2">
-                    <span className="text-emerald-400 font-bold">✓</span>
-                    <span>Single application for all 6 target roles</span>
+                    <span className="text-emerald-400 font-bold">·</span>
+                    <span>Reduce manual HR data entry</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-emerald-400 font-bold">✓</span>
-                    <span>No redundant manual form re-typing</span>
+                    <span className="text-emerald-400 font-bold">·</span>
+                    <span>Reduce incomplete applications</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-emerald-400 font-bold">✓</span>
-                    <span>Direct review by department hiring managers</span>
+                    <span className="text-emerald-400 font-bold">·</span>
+                    <span>Shorten applicant completion times</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-emerald-400 font-bold">·</span>
+                    <span>Standardize data for future ATS readiness</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-emerald-400 font-bold">·</span>
+                    <span>Support lower overall operating costs</span>
                   </li>
                 </ul>
               </div>
@@ -266,13 +274,12 @@ export default function App() {
             <Mountain className="w-4 h-4 text-emerald-800" />
             <span className="font-semibold text-stone-800">Cascade Peak Outfitters</span>
             <span aria-hidden="true">·</span>
-            <span>Applicant Intake Prototype</span>
+            <span>Front-End Recruitment Prototype</span>
           </div>
 
           <div className="flex items-center gap-6 text-[11px] text-stone-500">
-            <span>Equal Opportunity Outdoor Employer</span>
-            <span>Leave No Trace Partner</span>
-            <span className="font-mono">ATS Ready</span>
+            <span>Prepared for Future ATS Integration</span>
+            <span className="font-mono">No Live Database Storage</span>
           </div>
         </div>
       </footer>

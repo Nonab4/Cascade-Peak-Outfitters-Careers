@@ -11,8 +11,15 @@ import {
   Sparkles,
   Info,
   X,
+  AlertTriangle,
 } from 'lucide-react';
 import { ApplicantData, EducationItem, WorkExperienceItem } from '../../types/application';
+import {
+  standardizePhoneNumber,
+  isValidPhoneNumber,
+  isValidEmailAddress,
+  isValidGraduationYear,
+} from '../../utils/resumeParser';
 
 interface Step2ReviewInfoProps {
   data: ApplicantData;
@@ -20,6 +27,12 @@ interface Step2ReviewInfoProps {
   onNext: () => void;
   onBack: () => void;
 }
+
+// Generate array of graduation years from current year + 6 down to 1965
+const CURRENT_YEAR = new Date().getFullYear();
+const GRADUATION_YEAR_OPTIONS = Array.from({ length: CURRENT_YEAR + 6 - 1965 + 1 }, (_, i) =>
+  String(CURRENT_YEAR + 6 - i)
+);
 
 export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
   data,
@@ -31,6 +44,7 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
   const [newSkillInput, setNewSkillInput] = useState('');
   const [showAddEdu, setShowAddEdu] = useState(false);
   const [showAddWork, setShowAddWork] = useState(false);
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false);
 
   // New Education Draft
   const [draftEdu, setDraftEdu] = useState<Partial<EducationItem>>({
@@ -40,6 +54,7 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
     graduationYear: '',
     details: '',
   });
+  const [draftEduError, setDraftEduError] = useState<string | null>(null);
 
   // New Work Experience Draft
   const [draftWork, setDraftWork] = useState<Partial<WorkExperienceItem>>({
@@ -50,25 +65,74 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
     current: false,
     description: '',
   });
+  const [draftWorkError, setDraftWorkError] = useState<string | null>(null);
 
-  // Real-time calculation of missing fields
-  const missingFieldsList: string[] = [];
-  if (!formData.fullName.trim()) missingFieldsList.push('Full Name');
-  if (!formData.email.trim()) missingFieldsList.push('Email Address');
-  if (!formData.phone.trim()) missingFieldsList.push('Phone Number');
-  if (!formData.location.trim()) missingFieldsList.push('Location / City');
-  if (formData.education.length === 0) {
-    missingFieldsList.push('Education History');
-  } else if (formData.education.some((e) => !e.graduationYear?.trim())) {
-    missingFieldsList.push('Education Graduation Year');
+  // Validation evaluations
+  const isNameValid = formData.fullName.trim().length >= 2;
+  const isEmailValid = isValidEmailAddress(formData.email);
+  const isPhoneValid = isValidPhoneNumber(formData.phone);
+  const isLocationValid = formData.location.trim().length >= 2;
+  
+  const hasEducation = formData.education.length > 0;
+  const areAllEduGradYearsValid =
+    hasEducation &&
+    formData.education.every(
+      (e) => Boolean(e.graduationYear && isValidGraduationYear(e.graduationYear))
+    );
+  const areAllEduDegreesValid =
+    hasEducation &&
+    formData.education.every((e) => Boolean(e.degree.trim() && e.institution.trim()));
+
+  const hasWorkExperience = formData.workExperience.length > 0;
+  const areAllWorkItemsValid =
+    hasWorkExperience &&
+    formData.workExperience.every((w) => Boolean(w.title.trim() && w.company.trim()));
+
+  const hasSkills = formData.skills.length > 0;
+
+  // Build explicit list of all correction requirements
+  const validationErrors: string[] = [];
+  if (!isNameValid) validationErrors.push('Full Legal Name is required (minimum 2 characters).');
+  if (!formData.email.trim()) {
+    validationErrors.push('Email Address is required.');
+  } else if (!isEmailValid) {
+    validationErrors.push('Email Address format is invalid (e.g. applicant@domain.com).');
   }
-  if (formData.workExperience.length === 0) missingFieldsList.push('Work Experience');
-  if (formData.skills.length === 0) missingFieldsList.push('Skills');
+  if (!formData.phone.trim()) {
+    validationErrors.push('Phone Number is required.');
+  } else if (!isPhoneValid) {
+    validationErrors.push('Phone Number must contain 10 digits (e.g. (206) 555-0184).');
+  }
+  if (!isLocationValid) validationErrors.push('Location (City, State / Region) is required.');
+  if (!hasEducation) {
+    validationErrors.push('At least one Education record is required.');
+  } else {
+    if (!areAllEduDegreesValid) {
+      validationErrors.push('Each education record must have a Degree and Institution.');
+    }
+    if (!areAllEduGradYearsValid) {
+      validationErrors.push('Each education record requires a valid 4-digit Graduation Year (e.g., 2022).');
+    }
+  }
+  if (!hasWorkExperience || !areAllWorkItemsValid) {
+    validationErrors.push('At least one Work Experience record with Job Title and Company is required.');
+  }
+  if (!hasSkills) {
+    validationErrors.push('At least one Skill or competency is required.');
+  }
+
+  const isFormValid = validationErrors.length === 0;
 
   const handleFieldChange = (field: keyof ApplicantData, value: any) => {
     const updated = { ...formData, [field]: value };
     setFormData(updated);
     onUpdateData(updated);
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawVal = e.target.value;
+    const formatted = standardizePhoneNumber(rawVal);
+    handleFieldChange('phone', formatted);
   };
 
   const handleAddSkill = (e: React.FormEvent) => {
@@ -98,13 +162,22 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
   };
 
   const handleSaveDraftEducation = () => {
-    if (!draftEdu.institution?.trim() || !draftEdu.degree?.trim()) return;
+    setDraftEduError(null);
+    if (!draftEdu.degree?.trim() || !draftEdu.institution?.trim()) {
+      setDraftEduError('Please enter both Degree and Institution.');
+      return;
+    }
+    if (!draftEdu.graduationYear || !isValidGraduationYear(draftEdu.graduationYear)) {
+      setDraftEduError('Please select or enter a valid 4-digit Graduation Year (between 1960 and 2035).');
+      return;
+    }
+
     const newItem: EducationItem = {
       id: `edu-manual-${Date.now()}`,
       institution: draftEdu.institution.trim(),
       degree: draftEdu.degree.trim(),
       fieldOfStudy: draftEdu.fieldOfStudy?.trim() || '',
-      graduationYear: draftEdu.graduationYear?.trim() || '',
+      graduationYear: draftEdu.graduationYear.trim(),
       details: draftEdu.details?.trim() || '',
       isExtracted: false,
     };
@@ -126,7 +199,12 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
   };
 
   const handleSaveDraftWork = () => {
-    if (!draftWork.company?.trim() || !draftWork.title?.trim()) return;
+    setDraftWorkError(null);
+    if (!draftWork.title?.trim() || !draftWork.company?.trim()) {
+      setDraftWorkError('Please enter both Job Title and Company Name.');
+      return;
+    }
+
     const newItem: WorkExperienceItem = {
       id: `work-manual-${Date.now()}`,
       company: draftWork.company.trim(),
@@ -142,7 +220,14 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
     setShowAddWork(false);
   };
 
-  const canProceed = formData.fullName.trim().length > 0 && formData.email.trim().length > 0;
+  const handleProceed = () => {
+    setAttemptedSubmit(true);
+    if (!isFormValid) {
+      window.scrollTo({ top: 120, behavior: 'smooth' });
+      return;
+    }
+    onNext();
+  };
 
   return (
     <div className="space-y-8">
@@ -153,13 +238,13 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
             <div className="flex items-center gap-2 text-xs font-semibold text-emerald-800 tracking-wide uppercase">
               <span>Step 2 of 5</span>
               <span aria-hidden="true">·</span>
-              <span>Candidate Verification</span>
+              <span>Review & Validation</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-bold text-stone-900 mt-1 font-['Plus_Jakarta_Sans'] tracking-tight">
               Review Applicant Information
             </h2>
             <p className="text-stone-600 text-sm mt-1 max-w-2xl">
-              We parsed the extracted fields from your CV. Please verify their accuracy and fill in any flagged missing details.
+              Extracted fields from your CV are populated below. To support data quality and eliminate incomplete applications, all required fields and formats must be validated before continuing.
             </p>
           </div>
 
@@ -170,42 +255,39 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
           </div>
         </div>
 
-        {/* Flagged Missing Information Alert Banner */}
-        {missingFieldsList.length > 0 ? (
-          <div className="mt-6 p-4 bg-amber-50 border border-amber-300 rounded-xl">
+        {/* Validation Summary Callout if missing fields or errors exist */}
+        {validationErrors.length > 0 ? (
+          <div className="mt-6 p-5 bg-amber-50/90 border border-amber-300 rounded-xl">
             <div className="flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wide">
-                    Missing Information Flagged ({missingFieldsList.length})
+                    Required Information & Format Corrections ({validationErrors.length})
                   </h4>
                   <span className="text-[11px] text-amber-800 font-medium">
-                    · Not found in uploaded CV
+                    · Action required to proceed
                   </span>
                 </div>
-                <p className="text-xs text-amber-800 mt-1 leading-relaxed">
-                  To ensure complete HR processing and eliminate manual recruiter follow-up, please fill in the following highlighted fields:
+                <p className="text-xs text-amber-800 mt-1">
+                  The following items are missing from your uploaded CV or require formatting corrections:
                 </p>
-                <div className="flex flex-wrap gap-2 mt-2.5">
-                  {missingFieldsList.map((field) => (
-                    <span
-                      key={field}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs"
-                    >
-                      <AlertCircle className="w-3 h-3 text-amber-700" />
-                      <span>{field}</span>
-                    </span>
+                <ul className="mt-2.5 space-y-1.5 text-xs text-amber-900">
+                  {validationErrors.map((err, idx) => (
+                    <li key={idx} className="flex items-start gap-2">
+                      <span className="text-amber-700 font-bold leading-none mt-1">·</span>
+                      <span>{err}</span>
+                    </li>
                   ))}
-                </div>
+                </ul>
               </div>
             </div>
           </div>
         ) : (
-          <div className="mt-6 p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3">
+          <div className="mt-6 p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3">
             <CheckCircle2 className="w-5 h-5 text-emerald-700 shrink-0" />
             <p className="text-xs font-medium text-emerald-900">
-              All essential candidate contact, background, and skill details are present and verified.
+              All required fields, contact information, education records, and skills are complete and properly formatted.
             </p>
           </div>
         )}
@@ -217,7 +299,7 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
           <span>Personal & Contact Information</span>
         </h3>
         <p className="text-xs text-stone-500 mt-1">
-          Used by hiring managers and store operations for recruitment correspondence.
+          Used to identify and contact you throughout the recruitment process.
         </p>
 
         <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -227,7 +309,7 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
               <label htmlFor="fullName" className="block text-xs font-semibold text-stone-800 mb-1">
                 Full Legal Name <span className="text-rose-600">*</span>
               </label>
-              {!formData.fullName.trim() && (
+              {!isNameValid && (
                 <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wide">
                   Required
                 </span>
@@ -240,11 +322,16 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
               onChange={(e) => handleFieldChange('fullName', e.target.value)}
               placeholder="e.g. Jordan Vance"
               className={`w-full px-3.5 py-2.5 text-sm rounded-lg border transition-all ${
-                !formData.fullName.trim()
-                  ? 'border-amber-400 bg-amber-50/40 focus:ring-amber-500'
+                !isNameValid && attemptedSubmit
+                  ? 'border-rose-400 bg-rose-50/40 focus:ring-rose-500'
+                  : !isNameValid
+                  ? 'border-amber-400 bg-amber-50/30 focus:ring-amber-500'
                   : 'border-stone-300 focus:border-emerald-700 focus:ring-1 focus:ring-emerald-700 bg-white'
               }`}
             />
+            {!isNameValid && (
+              <p className="text-[11px] text-amber-700 mt-1">Please enter your full legal name.</p>
+            )}
           </div>
 
           {/* Email */}
@@ -253,9 +340,9 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
               <label htmlFor="email" className="block text-xs font-semibold text-stone-800 mb-1">
                 Email Address <span className="text-rose-600">*</span>
               </label>
-              {!formData.email.trim() && (
+              {!isEmailValid && (
                 <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wide">
-                  Required
+                  {formData.email.trim() ? 'Invalid Format' : 'Required'}
                 </span>
               )}
             </div>
@@ -264,24 +351,33 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
               type="email"
               value={formData.email}
               onChange={(e) => handleFieldChange('email', e.target.value)}
-              placeholder="e.g. jordan.vance@example.com"
+              placeholder="e.g. applicant@domain.com"
               className={`w-full px-3.5 py-2.5 text-sm rounded-lg border transition-all ${
-                !formData.email.trim()
-                  ? 'border-amber-400 bg-amber-50/40 focus:ring-amber-500'
+                !isEmailValid && attemptedSubmit
+                  ? 'border-rose-400 bg-rose-50/40 focus:ring-rose-500'
+                  : !isEmailValid
+                  ? 'border-amber-400 bg-amber-50/30 focus:ring-amber-500'
                   : 'border-stone-300 focus:border-emerald-700 focus:ring-1 focus:ring-emerald-700 bg-white'
               }`}
             />
+            {!isEmailValid && (
+              <p className="text-[11px] text-amber-700 mt-1">
+                {formData.email.trim()
+                  ? 'Please enter a valid email format (e.g., name@example.com).'
+                  : 'Email address is required.'}
+              </p>
+            )}
           </div>
 
           {/* Phone */}
           <div>
             <div className="flex items-center justify-between">
               <label htmlFor="phone" className="block text-xs font-semibold text-stone-800 mb-1">
-                Phone Number
+                Phone Number <span className="text-rose-600">*</span>
               </label>
-              {!formData.phone.trim() && (
+              {!isPhoneValid && (
                 <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                  Missing from CV
+                  {formData.phone.trim() ? '10 Digits Required' : 'Missing from CV'}
                 </span>
               )}
             </div>
@@ -289,17 +385,19 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
               id="phone"
               type="tel"
               value={formData.phone}
-              onChange={(e) => handleFieldChange('phone', e.target.value)}
-              placeholder="e.g. (206) 555-0184"
-              className={`w-full px-3.5 py-2.5 text-sm rounded-lg border transition-all ${
-                !formData.phone.trim()
-                  ? 'border-amber-400 bg-amber-50/30 focus:border-amber-600 focus:ring-1 focus:ring-amber-500'
+              onChange={handlePhoneChange}
+              placeholder="(206) 555-0184"
+              className={`w-full px-3.5 py-2.5 text-sm rounded-lg border transition-all font-mono ${
+                !isPhoneValid && attemptedSubmit
+                  ? 'border-rose-400 bg-rose-50/40 focus:ring-rose-500'
+                  : !isPhoneValid
+                  ? 'border-amber-400 bg-amber-50/30 focus:ring-amber-500'
                   : 'border-stone-300 focus:border-emerald-700 focus:ring-1 focus:ring-emerald-700 bg-white'
               }`}
             />
-            {!formData.phone.trim() && (
+            {!isPhoneValid && (
               <p className="text-[11px] text-amber-700 mt-1">
-                Please enter a phone number so our hiring team can reach you.
+                Standardized 10-digit phone number is required (e.g. (206) 555-0184).
               </p>
             )}
           </div>
@@ -308,9 +406,9 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
           <div>
             <div className="flex items-center justify-between">
               <label htmlFor="location" className="block text-xs font-semibold text-stone-800 mb-1">
-                Location (City, State / Region)
+                Location (City, State / Region) <span className="text-rose-600">*</span>
               </label>
-              {!formData.location.trim() && (
+              {!isLocationValid && (
                 <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
                   Missing from CV
                 </span>
@@ -321,13 +419,20 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
               type="text"
               value={formData.location}
               onChange={(e) => handleFieldChange('location', e.target.value)}
-              placeholder="e.g. Seattle, WA or Bend, OR"
+              placeholder="e.g. Seattle, WA or Portland, OR"
               className={`w-full px-3.5 py-2.5 text-sm rounded-lg border transition-all ${
-                !formData.location.trim()
-                  ? 'border-amber-400 bg-amber-50/30 focus:border-amber-600 focus:ring-1 focus:ring-amber-500'
+                !isLocationValid && attemptedSubmit
+                  ? 'border-rose-400 bg-rose-50/40 focus:ring-rose-500'
+                  : !isLocationValid
+                  ? 'border-amber-400 bg-amber-50/30 focus:ring-amber-500'
                   : 'border-stone-300 focus:border-emerald-700 focus:ring-1 focus:ring-emerald-700 bg-white'
               }`}
             />
+            {!isLocationValid && (
+              <p className="text-[11px] text-amber-700 mt-1">
+                Please enter your city and state or regional location.
+              </p>
+            )}
           </div>
         </div>
 
@@ -341,22 +446,204 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
             rows={3}
             value={formData.summary}
             onChange={(e) => handleFieldChange('summary', e.target.value)}
-            placeholder="Brief overview of your outdoor equipment experience, leadership background, or career goals..."
+            placeholder="Brief overview of your experience, leadership background, or career goals..."
             className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-stone-300 focus:border-emerald-700 focus:ring-1 focus:ring-emerald-700 bg-white leading-relaxed"
           />
         </div>
       </div>
 
-      {/* SECTION 2: WORK EXPERIENCE */}
+      {/* SECTION 2: EDUCATION WITH STANDARDIZED 4-DIGIT YEAR */}
+      <div className="bg-white rounded-xl border border-stone-200 shadow-xs p-6 sm:p-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-bold text-stone-900 font-['Plus_Jakarta_Sans'] flex items-center gap-2">
+              <GraduationCap className="w-4 h-4 text-emerald-800" />
+              <span>Education History <span className="text-rose-600">*</span></span>
+            </h3>
+            <p className="text-xs text-stone-500 mt-0.5">
+              Degrees and credentials. A standardized 4-digit graduation year is required for each entry.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowAddEdu(!showAddEdu)}
+            className="px-3 py-1.5 text-xs font-medium text-emerald-900 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-300 transition-colors flex items-center gap-1.5"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Education</span>
+          </button>
+        </div>
+
+        {formData.education.length === 0 && !showAddEdu && (
+          <div className="mt-5 p-4 border border-dashed border-amber-300 bg-amber-50/50 rounded-xl text-center">
+            <p className="text-xs font-semibold text-amber-900">No education was detected on your CV</p>
+            <p className="text-[11px] text-amber-700 mt-1">
+              At least one education record is required. Click "Add Education" above.
+            </p>
+          </div>
+        )}
+
+        {/* Existing Education List */}
+        <div className="mt-6 space-y-4">
+          {formData.education.map((edu) => {
+            const hasValidGradYear = edu.graduationYear && isValidGraduationYear(edu.graduationYear);
+            return (
+              <div
+                key={edu.id}
+                className={`p-5 rounded-xl border relative transition-all ${
+                  !hasValidGradYear
+                    ? 'border-amber-300 bg-amber-50/30'
+                    : 'border-stone-200 bg-stone-50/40 hover:border-stone-300'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => handleRemoveEducation(edu.id)}
+                  className="absolute top-4 right-4 text-stone-400 hover:text-rose-600 transition-colors p-1"
+                  title="Remove education"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-stone-700 mb-1">
+                      Degree / Credential <span className="text-rose-600">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={edu.degree}
+                      onChange={(e) => handleUpdateEducation(edu.id, 'degree', e.target.value)}
+                      placeholder="e.g. Bachelor of Arts"
+                      className="w-full px-3 py-2 text-xs sm:text-sm rounded border border-stone-300 focus:border-emerald-700 bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-stone-700 mb-1">
+                      Institution / University <span className="text-rose-600">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={edu.institution}
+                      onChange={(e) => handleUpdateEducation(edu.id, 'institution', e.target.value)}
+                      placeholder="e.g. University of Washington"
+                      className="w-full px-3 py-2 text-xs sm:text-sm rounded border border-stone-300 focus:border-emerald-700 bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <label className="block text-[11px] font-semibold text-stone-700 mb-1">
+                        Graduation Year (4 Digits) <span className="text-rose-600">*</span>
+                      </label>
+                      {!hasValidGradYear && (
+                        <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300">
+                          {edu.graduationYear ? 'Invalid Year' : 'Missing'}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2">
+                      <select
+                        value={hasValidGradYear ? edu.graduationYear : ''}
+                        onChange={(e) => handleUpdateEducation(edu.id, 'graduationYear', e.target.value)}
+                        className={`w-full px-3 py-2 text-xs sm:text-sm rounded border font-mono ${
+                          !hasValidGradYear
+                            ? 'border-amber-400 bg-amber-50 focus:border-amber-600 focus:ring-1 focus:ring-amber-500 text-amber-950 font-bold'
+                            : 'border-stone-300 focus:border-emerald-700 bg-white text-stone-800'
+                        }`}
+                      >
+                        <option value="">-- Select Standard Year --</option>
+                        {GRADUATION_YEAR_OPTIONS.map((yr) => (
+                          <option key={yr} value={yr}>
+                            {yr}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {!hasValidGradYear && (
+                      <p className="text-[10px] text-amber-800 mt-1">
+                        Please select a valid 4-digit graduation year.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Add Education Draft Card */}
+        {showAddEdu && (
+          <div className="mt-5 p-5 rounded-xl border border-emerald-300 bg-emerald-50/40">
+            <h4 className="text-xs font-bold text-emerald-950 uppercase tracking-wide mb-3">
+              Add Education Record
+            </h4>
+            {draftEduError && (
+              <div className="mb-3 p-2.5 bg-rose-100 border border-rose-300 text-rose-800 text-xs rounded">
+                {draftEduError}
+              </div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <input
+                type="text"
+                placeholder="Degree (e.g. B.S. Business)"
+                value={draftEdu.degree}
+                onChange={(e) => setDraftEdu({ ...draftEdu, degree: e.target.value })}
+                className="px-3 py-2 text-xs rounded border border-stone-300 bg-white"
+              />
+              <input
+                type="text"
+                placeholder="Institution (e.g. Oregon State University)"
+                value={draftEdu.institution}
+                onChange={(e) => setDraftEdu({ ...draftEdu, institution: e.target.value })}
+                className="px-3 py-2 text-xs rounded border border-stone-300 bg-white"
+              />
+              <select
+                value={draftEdu.graduationYear || ''}
+                onChange={(e) => setDraftEdu({ ...draftEdu, graduationYear: e.target.value })}
+                className="px-3 py-2 text-xs rounded border border-stone-300 bg-white font-mono"
+              >
+                <option value="">-- Select Year --</option>
+                {GRADUATION_YEAR_OPTIONS.map((yr) => (
+                  <option key={yr} value={yr}>
+                    {yr}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAddEdu(false)}
+                className="px-3 py-1.5 text-xs text-stone-600 hover:text-stone-900"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveDraftEducation}
+                className="px-4 py-1.5 text-xs font-semibold text-white bg-emerald-800 hover:bg-emerald-900 rounded"
+              >
+                Save Education
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* SECTION 3: WORK EXPERIENCE */}
       <div className="bg-white rounded-xl border border-stone-200 shadow-xs p-6 sm:p-8">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-base font-bold text-stone-900 font-['Plus_Jakarta_Sans'] flex items-center gap-2">
               <Briefcase className="w-4 h-4 text-emerald-800" />
-              <span>Work Experience</span>
+              <span>Work Experience <span className="text-rose-600">*</span></span>
             </h3>
             <p className="text-xs text-stone-500 mt-0.5">
-              Positions extracted from your CV. Edit details or add additional roles.
+              Positions extracted from your CV. At least one employment record is required.
             </p>
           </div>
 
@@ -374,7 +661,7 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
           <div className="mt-5 p-4 border border-dashed border-amber-300 bg-amber-50/50 rounded-xl text-center">
             <p className="text-xs font-semibold text-amber-900">No work experience was detected on your CV</p>
             <p className="text-[11px] text-amber-700 mt-1">
-              Click "Add Position" above to add your employment or guide experience.
+              At least one position is required. Click "Add Position" above to add your employment history.
             </p>
           </div>
         )}
@@ -398,7 +685,7 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[11px] font-semibold text-stone-700 mb-1">
-                    Job Title
+                    Job Title <span className="text-rose-600">*</span>
                   </label>
                   <input
                     type="text"
@@ -410,7 +697,7 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
 
                 <div>
                   <label className="block text-[11px] font-semibold text-stone-700 mb-1">
-                    Company / Organization
+                    Company / Organization <span className="text-rose-600">*</span>
                   </label>
                   <input
                     type="text"
@@ -431,14 +718,14 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
                       const val = e.target.value;
                       handleUpdateWork(work.id, 'startDate', val);
                     }}
-                    placeholder="e.g. Sep 2022 - Present"
+                    placeholder="e.g. 2021 - Present"
                     className="w-full px-3 py-2 text-xs sm:text-sm rounded border border-stone-300 focus:border-emerald-700 bg-white"
                   />
                 </div>
 
                 <div className="sm:col-span-2">
                   <label className="block text-[11px] font-semibold text-stone-700 mb-1">
-                    Key Achievements & Responsibilities
+                    Key Responsibilities
                   </label>
                   <textarea
                     rows={3}
@@ -452,12 +739,17 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
           ))}
         </div>
 
-        {/* Add Work Form Modal/Card */}
+        {/* Add Work Draft Form */}
         {showAddWork && (
           <div className="mt-5 p-5 rounded-xl border border-emerald-300 bg-emerald-50/40">
             <h4 className="text-xs font-bold text-emerald-950 uppercase tracking-wide mb-3">
-              Add New Employment Experience
+              Add New Employment Position
             </h4>
+            {draftWorkError && (
+              <div className="mb-3 p-2.5 bg-rose-100 border border-rose-300 text-rose-800 text-xs rounded">
+                {draftWorkError}
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <input
                 type="text"
@@ -468,7 +760,7 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
               />
               <input
                 type="text"
-                placeholder="Company Name (e.g. Cascade Gear)"
+                placeholder="Company Name"
                 value={draftWork.company}
                 onChange={(e) => setDraftWork({ ...draftWork, company: e.target.value })}
                 className="px-3 py-2 text-xs rounded border border-stone-300 bg-white"
@@ -508,178 +800,30 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
                 onClick={handleSaveDraftWork}
                 className="px-4 py-1.5 text-xs font-semibold text-white bg-emerald-800 hover:bg-emerald-900 rounded"
               >
-                Save Experience
+                Save Position
               </button>
             </div>
           </div>
         )}
       </div>
 
-      {/* SECTION 3: EDUCATION */}
-      <div className="bg-white rounded-xl border border-stone-200 shadow-xs p-6 sm:p-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-base font-bold text-stone-900 font-['Plus_Jakarta_Sans'] flex items-center gap-2">
-              <GraduationCap className="w-4 h-4 text-emerald-800" />
-              <span>Education</span>
-            </h3>
-            <p className="text-xs text-stone-500 mt-0.5">
-              Degrees, certificates, or university credentials.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setShowAddEdu(!showAddEdu)}
-            className="px-3 py-1.5 text-xs font-medium text-emerald-900 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-300 transition-colors flex items-center gap-1.5"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Add Education</span>
-          </button>
-        </div>
-
-        {/* Existing Education List */}
-        <div className="mt-6 space-y-4">
-          {formData.education.map((edu) => {
-            const isGradYearMissing = !edu.graduationYear?.trim();
-            return (
-              <div
-                key={edu.id}
-                className={`p-5 rounded-xl border relative transition-all ${
-                  isGradYearMissing
-                    ? 'border-amber-300 bg-amber-50/30'
-                    : 'border-stone-200 bg-stone-50/40 hover:border-stone-300'
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => handleRemoveEducation(edu.id)}
-                  className="absolute top-4 right-4 text-stone-400 hover:text-rose-600 transition-colors p-1"
-                  title="Remove education"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-stone-700 mb-1">
-                      Degree / Credential
-                    </label>
-                    <input
-                      type="text"
-                      value={edu.degree}
-                      onChange={(e) => handleUpdateEducation(edu.id, 'degree', e.target.value)}
-                      className="w-full px-3 py-2 text-xs sm:text-sm rounded border border-stone-300 focus:border-emerald-700 bg-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-semibold text-stone-700 mb-1">
-                      Institution / University
-                    </label>
-                    <input
-                      type="text"
-                      value={edu.institution}
-                      onChange={(e) => handleUpdateEducation(edu.id, 'institution', e.target.value)}
-                      className="w-full px-3 py-2 text-xs sm:text-sm rounded border border-stone-300 focus:border-emerald-700 bg-white"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <label className="block text-[11px] font-semibold text-stone-700 mb-1">
-                        Graduation Year
-                      </label>
-                      {isGradYearMissing && (
-                        <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300">
-                          Missing in CV
-                        </span>
-                      )}
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="e.g. 2022"
-                      value={edu.graduationYear || ''}
-                      onChange={(e) => handleUpdateEducation(edu.id, 'graduationYear', e.target.value)}
-                      className={`w-full px-3 py-2 text-xs sm:text-sm rounded border font-mono ${
-                        isGradYearMissing
-                          ? 'border-amber-400 bg-amber-50 focus:border-amber-600 focus:ring-1 focus:ring-amber-500'
-                          : 'border-stone-300 focus:border-emerald-700 bg-white'
-                      }`}
-                    />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Add Education Draft */}
-        {showAddEdu && (
-          <div className="mt-5 p-5 rounded-xl border border-emerald-300 bg-emerald-50/40">
-            <h4 className="text-xs font-bold text-emerald-950 uppercase tracking-wide mb-3">
-              Add Education Credential
-            </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <input
-                type="text"
-                placeholder="Degree (e.g. B.S. Business)"
-                value={draftEdu.degree}
-                onChange={(e) => setDraftEdu({ ...draftEdu, degree: e.target.value })}
-                className="px-3 py-2 text-xs rounded border border-stone-300 bg-white"
-              />
-              <input
-                type="text"
-                placeholder="Institution (e.g. Oregon State)"
-                value={draftEdu.institution}
-                onChange={(e) => setDraftEdu({ ...draftEdu, institution: e.target.value })}
-                className="px-3 py-2 text-xs rounded border border-stone-300 bg-white"
-              />
-              <input
-                type="text"
-                placeholder="Graduation Year (e.g. 2023)"
-                value={draftEdu.graduationYear}
-                onChange={(e) => setDraftEdu({ ...draftEdu, graduationYear: e.target.value })}
-                className="px-3 py-2 text-xs rounded border border-stone-300 bg-white font-mono"
-              />
-            </div>
-            <div className="mt-4 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowAddEdu(false)}
-                className="px-3 py-1.5 text-xs text-stone-600 hover:text-stone-900"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveDraftEducation}
-                className="px-4 py-1.5 text-xs font-semibold text-white bg-emerald-800 hover:bg-emerald-900 rounded"
-              >
-                Save Education
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* SECTION 4: SKILLS & CERTIFICATIONS */}
+      {/* SECTION 4: SKILLS & COMPETENCIES */}
       <div className="bg-white rounded-xl border border-stone-200 shadow-xs p-6 sm:p-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h3 className="text-base font-bold text-stone-900 font-['Plus_Jakarta_Sans'] flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-emerald-800" />
-              <span>Extracted Skills & Competencies</span>
+              <span>Skills & Competencies <span className="text-rose-600">*</span></span>
             </h3>
             <p className="text-xs text-stone-500 mt-0.5">
-              These skills will be matched against position requirements in Step 3.
+              Extracted skills and qualifications. At least one skill is required.
             </p>
           </div>
 
           <form onSubmit={handleAddSkill} className="flex items-center gap-2">
             <input
               type="text"
-              placeholder="Add skill (e.g. SQL, POS)"
+              placeholder="Add skill (e.g. Customer Service, SQL)"
               value={newSkillInput}
               onChange={(e) => setNewSkillInput(e.target.value)}
               className="px-3 py-1.5 text-xs rounded-lg border border-stone-300 focus:border-emerald-700 bg-white"
@@ -699,7 +843,7 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
           <div className="mt-5 p-4 border border-dashed border-amber-300 bg-amber-50/50 rounded-xl text-center">
             <p className="text-xs font-semibold text-amber-900">No skills explicitly stated in CV</p>
             <p className="text-[11px] text-amber-700 mt-1">
-              Add relevant skills like Customer Service, POS, SQL, or Logistics above.
+              Please add at least one relevant skill (e.g. Customer Service, POS, SQL, Logistics) using the input above.
             </p>
           </div>
         ) : (
@@ -724,7 +868,7 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
         )}
       </div>
 
-      {/* Navigation Buttons */}
+      {/* Navigation Footer */}
       <div className="flex items-center justify-between pt-4 border-t border-stone-200">
         <button
           type="button"
@@ -736,18 +880,22 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
         </button>
 
         <div className="flex items-center gap-3">
-          {!canProceed && (
-            <span className="text-xs text-rose-600 font-medium flex items-center gap-1">
-              <Info className="w-3.5 h-3.5" />
-              <span>Name and email are required</span>
+          {!isFormValid && (
+            <span className="text-xs text-amber-800 font-medium flex items-center gap-1 bg-amber-50 px-2.5 py-1.5 rounded border border-amber-200">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+              <span>Please resolve highlighted required fields to continue ({validationErrors.length} remaining)</span>
             </span>
           )}
 
           <button
             type="button"
-            onClick={onNext}
-            disabled={!canProceed}
-            className="px-6 py-2.5 text-xs font-bold text-white bg-emerald-800 hover:bg-emerald-900 rounded-lg shadow-sm transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleProceed}
+            disabled={!isFormValid}
+            className={`px-6 py-2.5 text-xs font-bold rounded-lg shadow-sm transition-all flex items-center gap-2 ${
+              isFormValid
+                ? 'bg-emerald-800 hover:bg-emerald-900 text-white cursor-pointer'
+                : 'bg-stone-300 text-stone-500 cursor-not-allowed opacity-75'
+            }`}
           >
             <span>Proceed to Position Selection</span>
             <ArrowRight className="w-4 h-4" />

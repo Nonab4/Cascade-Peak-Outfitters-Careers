@@ -6,13 +6,15 @@ import {
   Printer,
   Copy,
   Check,
-  Calendar,
-  Mail,
   Clock,
-  ArrowRight,
-  TrendingDown,
   Database,
   FileCheck,
+  AlertCircle,
+  TrendingDown,
+  Mail,
+  UserX,
+  DollarSign,
+  Info,
 } from 'lucide-react';
 import { ApplicationSubmission } from '../../types/application';
 
@@ -47,17 +49,25 @@ export const Step5Complete: React.FC<Step5CompleteProps> = ({
         </div>
 
         <span className="text-xs font-bold text-emerald-800 tracking-wider uppercase font-mono">
-          Application Successfully Received
+          Prototype Application Completed
         </span>
         <h2 className="text-2xl sm:text-4xl font-extrabold text-stone-900 mt-2 font-['Plus_Jakarta_Sans'] tracking-tight">
-          Welcome to the Trail, {submission.applicant.fullName.split(' ')[0]}!
+          Application Finalized, {submission.applicant.fullName.split(' ')[0]}!
         </h2>
         <p className="text-stone-600 text-sm sm:text-base mt-2 max-w-xl mx-auto leading-relaxed">
-          Your application for Cascade Peak Outfitters has been validated and routed directly to our recruitment operations team.
+          Your application for Cascade Peak Outfitters has been validated and formatted.
         </p>
 
+        {/* Prototype Architecture Banner */}
+        <div className="mt-5 max-w-2xl mx-auto p-3.5 bg-stone-50 border border-stone-200 rounded-xl text-left text-xs text-stone-600 flex items-start gap-2.5">
+          <Info className="w-4 h-4 text-emerald-800 shrink-0 mt-0.5" />
+          <div>
+            <span className="font-semibold text-stone-900">Front-End Prototype Notice:</span> This application data has been standardized and structured in memory. It is ready for future ATS and HRIS integration; no live external database records are created in this prototype.
+          </div>
+        </div>
+
         {/* Reference & Metadata Bar */}
-        <div className="mt-8 p-4 bg-stone-50 rounded-xl border border-stone-200/80 max-w-xl mx-auto grid grid-cols-2 sm:grid-cols-3 gap-4 text-left">
+        <div className="mt-6 p-4 bg-stone-50/70 rounded-xl border border-stone-200/80 max-w-xl mx-auto grid grid-cols-2 sm:grid-cols-3 gap-4 text-left">
           <div>
             <span className="text-[10px] text-stone-400 font-medium uppercase tracking-wide block">
               Reference ID
@@ -69,7 +79,7 @@ export const Step5Complete: React.FC<Step5CompleteProps> = ({
 
           <div>
             <span className="text-[10px] text-stone-400 font-medium uppercase tracking-wide block">
-              Submitted At
+              Completed Date
             </span>
             <span className="text-xs font-medium text-stone-900 font-mono mt-0.5 block">
               {new Date(submission.submittedAt).toLocaleDateString('en-US', {
@@ -82,7 +92,7 @@ export const Step5Complete: React.FC<Step5CompleteProps> = ({
 
           <div className="col-span-2 sm:col-span-1">
             <span className="text-[10px] text-stone-400 font-medium uppercase tracking-wide block">
-              Candidate Email
+              Applicant Email
             </span>
             <span className="text-xs font-medium text-stone-900 truncate block mt-0.5" title={submission.applicant.email}>
               {submission.applicant.email}
@@ -93,7 +103,7 @@ export const Step5Complete: React.FC<Step5CompleteProps> = ({
         {/* Selected Positions Badges */}
         <div className="mt-6 text-center">
           <span className="text-xs text-stone-500 font-medium block mb-2">
-            Applied Roles ({submission.selectedPositions.length}):
+            Selected Roles ({submission.selectedPositions.length}):
           </span>
           <div className="flex flex-wrap justify-center gap-2">
             {submission.selectedPositions.map((pos) => (
@@ -109,55 +119,92 @@ export const Step5Complete: React.FC<Step5CompleteProps> = ({
         </div>
       </div>
 
-      {/* RECRUITMENT OPERATIONS VALUE & IMPACT BOX */}
+      {/* CURRENT BASELINES & POTENTIAL BUSINESS VALUE */}
       <div className="bg-stone-900 text-stone-100 rounded-2xl p-6 sm:p-8 border border-stone-800">
         <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400 tracking-wide uppercase">
           <FileCheck className="w-4 h-4 text-emerald-400" />
-          <span>Cascade Peak Outfitters HR Efficiency Impact</span>
+          <span>Cascade Peak Outfitters Recruitment Case Analysis</span>
         </div>
         <h3 className="text-lg font-bold text-white mt-1 font-['Plus_Jakarta_Sans']">
-          How this automated intake achieved our business goals:
+          Current Operational Baselines & Potential Business Value
         </h3>
+        <p className="text-xs text-stone-400 mt-1 max-w-3xl leading-relaxed">
+          Cascade Peak Outfitters receives ~4,800 applications per year. This prototype directly targets the company’s current operational pain points:
+        </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
-          <div className="bg-stone-800/80 rounded-xl p-4 border border-stone-700/60">
-            <div className="flex items-center gap-2 text-emerald-400 text-xs font-semibold">
-              <TrendingDown className="w-4 h-4" />
-              <span>Manual Entry Saved</span>
+        {/* 6 Current Baseline Facts */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5 mt-5">
+          <div className="bg-stone-800/80 rounded-xl p-3.5 border border-stone-700/60">
+            <div className="flex items-center gap-1.5 text-stone-400 text-xs font-medium">
+              <Clock className="w-3.5 h-3.5 text-emerald-400" />
+              <span>HR Processing Time</span>
             </div>
-            <p className="text-xl font-extrabold text-white font-mono mt-1">
-              ~22 Minutes
-            </p>
-            <p className="text-[11px] text-stone-400 mt-1 leading-relaxed">
-              HR previously re-typed every resume field manually. Now automatically parsed into standard fields.
+            <p className="text-xl font-bold text-white font-mono mt-1">14 minutes</p>
+            <p className="text-[11px] text-stone-400 mt-0.5">
+              Current baseline per application spent on manual data entry and review.
             </p>
           </div>
 
-          <div className="bg-stone-800/80 rounded-xl p-4 border border-stone-700/60">
-            <div className="flex items-center gap-2 text-emerald-400 text-xs font-semibold">
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Data Completeness</span>
+          <div className="bg-stone-800/80 rounded-xl p-3.5 border border-stone-700/60">
+            <div className="flex items-center gap-1.5 text-stone-400 text-xs font-medium">
+              <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+              <span>Incomplete Applications</span>
             </div>
-            <p className="text-xl font-extrabold text-white font-mono mt-1">
-              100% Validated
-            </p>
-            <p className="text-[11px] text-stone-400 mt-1 leading-relaxed">
-              Zero missing critical contact or qualification fields. Eliminated back-and-forth email chasing.
+            <p className="text-xl font-bold text-white font-mono mt-1">28%</p>
+            <p className="text-[11px] text-stone-400 mt-0.5">
+              Current baseline rate of applications submitted with missing information.
             </p>
           </div>
 
-          <div className="bg-stone-800/80 rounded-xl p-4 border border-stone-700/60">
-            <div className="flex items-center gap-2 text-emerald-400 text-xs font-semibold">
-              <Database className="w-4 h-4" />
-              <span>ATS Readiness</span>
+          <div className="bg-stone-800/80 rounded-xl p-3.5 border border-stone-700/60">
+            <div className="flex items-center gap-1.5 text-stone-400 text-xs font-medium">
+              <Mail className="w-3.5 h-3.5 text-amber-400" />
+              <span>Follow-up Emails</span>
             </div>
-            <p className="text-xl font-extrabold text-white font-mono mt-1">
-              Instant Routing
-            </p>
-            <p className="text-[11px] text-stone-400 mt-1 leading-relaxed">
-              Dossier is formatted in standardized structured JSON ready for instant HR ATS database ingestion.
+            <p className="text-xl font-bold text-white font-mono mt-1">1,100 / yr</p>
+            <p className="text-[11px] text-stone-400 mt-0.5">
+              Current annual emails sent by HR to chase missing applicant details.
             </p>
           </div>
+
+          <div className="bg-stone-800/80 rounded-xl p-3.5 border border-stone-700/60">
+            <div className="flex items-center gap-1.5 text-stone-400 text-xs font-medium">
+              <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Recruiter Labor Cost</span>
+            </div>
+            <p className="text-xl font-bold text-white font-mono mt-1">$82,000 / yr</p>
+            <p className="text-[11px] text-stone-400 mt-0.5">
+              Current annual baseline expenditure on manual recruiter intake labor.
+            </p>
+          </div>
+
+          <div className="bg-stone-800/80 rounded-xl p-3.5 border border-stone-700/60">
+            <div className="flex items-center gap-1.5 text-stone-400 text-xs font-medium">
+              <Clock className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Applicant Completion Time</span>
+            </div>
+            <p className="text-xl font-bold text-white font-mono mt-1">24 minutes</p>
+            <p className="text-[11px] text-stone-400 mt-0.5">
+              Current baseline duration required for an applicant to manually complete the form.
+            </p>
+          </div>
+
+          <div className="bg-stone-800/80 rounded-xl p-3.5 border border-stone-700/60">
+            <div className="flex items-center gap-1.5 text-stone-400 text-xs font-medium">
+              <UserX className="w-3.5 h-3.5 text-amber-400" />
+              <span>Applicant Drop-Off</span>
+            </div>
+            <p className="text-xl font-bold text-white font-mono mt-1">22%</p>
+            <p className="text-[11px] text-stone-400 mt-0.5">
+              Current baseline proportion of candidates who abandon the application before completion.
+            </p>
+          </div>
+        </div>
+
+        {/* Potential Business Value Explanation */}
+        <div className="mt-5 p-4 rounded-xl bg-stone-800/50 border border-stone-700/60 text-xs text-stone-300 leading-relaxed">
+          <span className="font-semibold text-emerald-400 block mb-1">Potential Business Value of the Redesigned Intake:</span>
+          By extracting data directly from uploaded CVs and requiring complete contact and education fields upfront, this workflow is designed to reduce the 14-minute manual entry burden, lower the 28% incomplete application rate, eliminate the need for 1,100 follow-up emails, streamline the 24-minute application process to curb the 22% drop-off rate, and support lower recruiter labor costs.
         </div>
 
         {/* ATS Export Payload Preview */}
@@ -168,13 +215,13 @@ export const Step5Complete: React.FC<Step5CompleteProps> = ({
             className="text-xs text-stone-300 hover:text-white flex items-center gap-1.5 transition-colors"
           >
             <Database className="w-3.5 h-3.5 text-emerald-400" />
-            <span>{showDossierJson ? 'Hide Standardized ATS JSON' : 'Inspect Standardized ATS JSON Payload'}</span>
+            <span>{showDossierJson ? 'Hide Standardized Payload' : 'Inspect Standardized ATS Integration Payload'}</span>
           </button>
 
           <button
             type="button"
             onClick={handleCopyJson}
-            className="px-3 py-1.5 text-xs text-stone-200 bg-stone-800 hover:bg-stone-700 rounded border border-stone-700 flex items-center gap-1.5 transition-colors"
+            className="px-3 py-1.5 text-xs text-stone-200 bg-stone-800 hover:bg-stone-700 rounded border border-stone-700 flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             {copiedJson ? (
               <>
@@ -184,7 +231,7 @@ export const Step5Complete: React.FC<Step5CompleteProps> = ({
             ) : (
               <>
                 <Copy className="w-3.5 h-3.5" />
-                <span>Copy ATS Data</span>
+                <span>Copy Standardized JSON</span>
               </>
             )}
           </button>
@@ -195,63 +242,6 @@ export const Step5Complete: React.FC<Step5CompleteProps> = ({
             <pre>{JSON.stringify(submission, null, 2)}</pre>
           </div>
         )}
-      </div>
-
-      {/* NEXT STEPS TIMELINE */}
-      <div className="bg-white rounded-2xl border border-stone-200 shadow-xs p-6 sm:p-8">
-        <h3 className="text-base font-bold text-stone-900 font-['Plus_Jakarta_Sans']">
-          What Happens Next?
-        </h3>
-        <p className="text-xs text-stone-500 mt-0.5">
-          Here is our expedited candidate review schedule:
-        </p>
-
-        <div className="mt-6 space-y-5">
-          <div className="flex items-start gap-4">
-            <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0 font-bold text-xs">
-              1
-            </div>
-            <div>
-              <h4 className="text-xs sm:text-sm font-bold text-stone-900">
-                Automated HR Ingestion & Verification
-              </h4>
-              <p className="text-xs text-stone-600 mt-0.5">
-                Your profile has been validated and dispatched to hiring managers for {submission.selectedPositions.map((p) => p.title).join(', ')}.
-              </p>
-              <span className="text-[11px] text-stone-400 font-mono mt-1 block">Completed · 0 min delay</span>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-4">
-            <div className="w-8 h-8 rounded-full bg-stone-100 text-stone-700 flex items-center justify-center shrink-0 font-bold text-xs">
-              2
-            </div>
-            <div>
-              <h4 className="text-xs sm:text-sm font-bold text-stone-900">
-                Department Hiring Manager Review
-              </h4>
-              <p className="text-xs text-stone-600 mt-0.5">
-                Our department leads in Seattle, Portland, and regional retail outposts assess role alignment and team fit.
-              </p>
-              <span className="text-[11px] text-stone-400 font-mono mt-1 block">Expected within 48 business hours</span>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-4">
-            <div className="w-8 h-8 rounded-full bg-stone-100 text-stone-700 flex items-center justify-center shrink-0 font-bold text-xs">
-              3
-            </div>
-            <div>
-              <h4 className="text-xs sm:text-sm font-bold text-stone-900">
-                Outfitter Conversation & Gear Fit
-              </h4>
-              <p className="text-xs text-stone-600 mt-0.5">
-                Qualified candidates receive an email invitation to schedule a 30-minute virtual or in-person outfitter interview.
-              </p>
-              <span className="text-[11px] text-stone-400 font-mono mt-1 block">Next step</span>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* WORKING ACTION BUTTONS */}
