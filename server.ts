@@ -18,6 +18,17 @@ const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 app.use(express.json({ limit: '25mb' }));
 
+// Diagnostic API logger
+app.use('/api', (req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    const contentType = res.getHeader('content-type') || 'unknown';
+    console.log(`[API Diagnostic] ${req.method} ${req.originalUrl} -> ${res.statusCode} (${contentType}) [${duration}ms]`);
+  });
+  next();
+});
+
 const apiKey = process.env.GEMINI_API_KEY;
 const ai = apiKey
   ? new GoogleGenAI({
@@ -79,9 +90,11 @@ app.post('/api/extract-resume', async (req, res) => {
     const { resumeText, fileBase64, mimeType, fileName, simulate503 } = req.body;
 
     if (simulate503 || req.query.simulate503 === 'true') {
-      return res.status(503).json({
-        error: 'AI resume extraction is temporarily unavailable. Your document has not been processed yet.',
+      return res.status(200).json({
+        success: false,
         temporaryUnavailable: true,
+        originalStatus: 503,
+        error: 'AI resume extraction is temporarily unavailable. Your document has not been processed yet.',
       });
     }
 
@@ -98,16 +111,21 @@ app.post('/api/extract-resume', async (req, res) => {
     }
 
     if (!extractedPlainText.trim() && (!buffer || cleanMimeType !== 'application/pdf')) {
-      return res.status(400).json({
+      return res.status(200).json({
+        success: false,
+        unexpectedError: true,
+        originalStatus: 400,
         error: 'Unable to extract text from the uploaded document. Please ensure it is a valid PDF, DOCX, or text file.',
         fallbackNeeded: false,
       });
     }
 
     if (!ai) {
-      return res.status(503).json({
-        error: 'AI resume extraction is temporarily unavailable. Your document has not been processed yet.',
+      return res.status(200).json({
+        success: false,
         temporaryUnavailable: true,
+        originalStatus: 503,
+        error: 'AI resume extraction is temporarily unavailable. Your document has not been processed yet.',
       });
     }
 
@@ -142,114 +160,194 @@ CRITICAL DOCUMENT CLASSIFICATION & DATA QUALITY INSTRUCTIONS:
 9. DATES: Normalize dates into standard readable formats. For education, graduationYear must be a 4-digit year (e.g. "2022") if explicitly stated; otherwise leave empty string "".
 10. FACTUAL INTEGRITY: Do NOT include fictional company facts, salaries, or marketing claims.`;
 
-    // Prepare contents: for PDF, we can pass native inlineData or the extracted text
-    let contentsPayload: any;
+    // Determine if extracted PDF text is usable (approx 200+ characters with normal letters/words)
+    const isPdf = cleanMimeType === 'application/pdf' || cleanFileName.toLowerCase().endsWith('.pdf');
+    const hasBase64 = Boolean(fileBase64 && fileBase64.length > 50);
 
-    if (cleanMimeType === 'application/pdf' && fileBase64) {
-      contentsPayload = {
-        parts: [
-          {
-            inlineData: {
-              mimeType: 'application/pdf',
-              data: fileBase64,
-            },
-          },
-          {
-            text: `Extract the candidate's structured application details from this uploaded PDF resume (${cleanFileName}). Strictly do not invent missing details.`,
-          },
-        ],
-      };
+    const isUsableExtractedText = (text: string): boolean => {
+      if (!text || typeof text !== 'string') return false;
+      const trimmed = text.trim();
+      if (trimmed.length < 200) return false;
+      // Count alphabetic characters and words
+      const alphaMatches = trimmed.match(/[a-zA-Z]/g);
+      const alphaCount = alphaMatches ? alphaMatches.length : 0;
+      if (alphaCount < 120) return false;
+      const words = trimmed.split(/\s+/).filter((w) => w.length > 1);
+      return words.length >= 25;
+    };
+
+    const hasUsableText = isUsableExtractedText(extractedPlainText);
+
+    if (isPdf && hasUsableText) {
+      console.log(`[ResumeServer] PDF text extracted successfully (${extractedPlainText.trim().length} chars). Using extracted-text extraction mode.`);
+    } else if (isPdf) {
+      console.log(`[ResumeServer] PDF contains little or no extractable text. Using native-PDF extraction mode.`);
     } else {
-      contentsPayload = `Applicant Resume Content (File: ${cleanFileName}):\n\n${extractedPlainText.slice(0, 15000)}`;
+      console.log(`[ResumeServer] Document text available (${extractedPlainText.trim().length} chars). Using extracted-text extraction mode.`);
     }
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
-      contents: contentsPayload,
-      config: {
-        systemInstruction,
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            isResumeOrCv: {
-              type: Type.BOOLEAN,
-              description: 'Whether the document reasonably appears to be a resume or CV (true) or an unrelated document like an essay, academic paper, invoice, report, or class assignment (false)',
+    const responseSchema = {
+      type: Type.OBJECT,
+      properties: {
+        isResumeOrCv: {
+          type: Type.BOOLEAN,
+          description:
+            'Whether the document reasonably appears to be a resume or CV (true) or an unrelated document like an essay, academic paper, invoice, report, or class assignment (false)',
+        },
+        documentType: {
+          type: Type.STRING,
+          description:
+            'Classification: resume, cv, academic_paper, essay, report, invoice, class_assignment, other',
+        },
+        fullName: { type: Type.STRING, description: 'Full legal name, empty string if missing or not a resume' },
+        email: { type: Type.STRING, description: 'Email address, empty string if missing or not a resume' },
+        phone: { type: Type.STRING, description: 'Phone number, empty string if missing or not a resume' },
+        location: { type: Type.STRING, description: 'City and State/Country, empty string if missing or not a resume' },
+        summary: { type: Type.STRING, description: 'Professional summary, empty string if not found or not a resume' },
+        skills: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: 'Explicitly mentioned skills and competencies',
+        },
+        education: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              institution: { type: Type.STRING },
+              degree: { type: Type.STRING },
+              fieldOfStudy: { type: Type.STRING },
+              graduationYear: { type: Type.STRING, description: '4-digit year, empty string if missing' },
+              details: { type: Type.STRING },
             },
-            documentType: {
-              type: Type.STRING,
-              description: 'Classification: resume, cv, academic_paper, essay, report, invoice, class_assignment, other',
-            },
-            fullName: { type: Type.STRING, description: 'Full legal name, empty string if missing or not a resume' },
-            email: { type: Type.STRING, description: 'Email address, empty string if missing or not a resume' },
-            phone: { type: Type.STRING, description: 'Phone number, empty string if missing or not a resume' },
-            location: { type: Type.STRING, description: 'City and State/Country, empty string if missing or not a resume' },
-            summary: { type: Type.STRING, description: 'Professional summary, empty string if not found or not a resume' },
-            skills: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-              description: 'Explicitly mentioned skills and competencies',
-            },
-            education: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  institution: { type: Type.STRING },
-                  degree: { type: Type.STRING },
-                  fieldOfStudy: { type: Type.STRING },
-                  graduationYear: { type: Type.STRING, description: '4-digit year, empty string if missing' },
-                  details: { type: Type.STRING },
-                },
-                required: ['institution', 'degree'],
-              },
-            },
-            workExperience: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  company: { type: Type.STRING },
-                  title: { type: Type.STRING },
-                  startDate: { type: Type.STRING },
-                  endDate: { type: Type.STRING },
-                  current: { type: Type.BOOLEAN },
-                  description: { type: Type.STRING },
-                },
-                required: ['company', 'title'],
-              },
-            },
-            missingFields: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-              description: 'Names of standard required fields missing from the resume',
-            },
-            extractionConfidenceNotes: {
-              type: Type.STRING,
-              description: 'Audit note summarizing extraction completeness and flagged missing items',
-            },
+            required: ['institution', 'degree'],
           },
-          required: ['isResumeOrCv', 'fullName', 'email', 'skills', 'education', 'workExperience', 'missingFields'],
+        },
+        workExperience: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              company: { type: Type.STRING },
+              title: { type: Type.STRING },
+              startDate: { type: Type.STRING },
+              endDate: { type: Type.STRING },
+              current: { type: Type.BOOLEAN },
+              description: { type: Type.STRING },
+            },
+            required: ['company', 'title'],
+          },
+        },
+        missingFields: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: 'Names of standard required fields missing from the resume',
+        },
+        extractionConfidenceNotes: {
+          type: Type.STRING,
+          description: 'Audit note summarizing extraction completeness and flagged missing items',
         },
       },
-    });
+      required: ['isResumeOrCv', 'fullName', 'email', 'skills', 'education', 'workExperience', 'missingFields'],
+    };
 
-    const parsedJson = JSON.parse(response.text || '{}');
+    // Helper to call Gemini with deterministic temperature 0
+    const executeGeminiCall = async (contentsPayload: any) => {
+      return await ai.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: contentsPayload,
+        config: {
+          systemInstruction,
+          temperature: 0,
+          responseMimeType: 'application/json',
+          responseSchema,
+        },
+      });
+    };
+
+    const textPayload = `Applicant Resume Content (File: ${cleanFileName}):\n\n${extractedPlainText.slice(0, 20000)}`;
+    const nativePdfPayload = {
+      parts: [
+        {
+          inlineData: {
+            mimeType: 'application/pdf',
+            data: fileBase64 || '',
+          },
+        },
+        {
+          text: `Extract the candidate's structured application details from this uploaded PDF resume (${cleanFileName}). Strictly do not invent missing details.`,
+        },
+      ],
+    };
+
+    let parsedJson: any = null;
+    let usedNativePdf = false;
+
+    // Strategy:
+    // 1. If usable text exists (or document is not a PDF), try text-first extraction.
+    // 2. If it's a PDF with little/no text, go straight to native PDF mode.
+    // 3. If text-first extraction on a PDF produces an invalid or unparseable result, fall back once to native PDF.
+    if (hasUsableText || !isPdf || !hasBase64) {
+      try {
+        const textResponse = await executeGeminiCall(textPayload);
+        const textResult = JSON.parse(textResponse.text || '{}');
+        if (textResult && typeof textResult === 'object' && typeof textResult.isResumeOrCv === 'boolean') {
+          parsedJson = textResult;
+        } else {
+          throw new Error('Malformed JSON structure from text extraction');
+        }
+      } catch (textErr: any) {
+        // If it's a temporary availability / quota error, don't fall back, rethrow for retry
+        const errStatus = textErr?.status || textErr?.statusCode || textErr?.code;
+        const errStr = `${errStatus} ${textErr?.message || ''}`.toLowerCase();
+        if (errStatus === 503 || errStatus === 429 || /503|429|resource_exhausted|quota|rate[\s-]limit/i.test(errStr)) {
+          throw textErr;
+        }
+
+        if (isPdf && hasBase64) {
+          console.warn('[ResumeServer] Text-mode response invalid — attempting native-PDF fallback:', textErr?.message);
+          console.log('[ResumeServer] Using native-PDF extraction mode.');
+          const pdfResponse = await executeGeminiCall(nativePdfPayload);
+          parsedJson = JSON.parse(pdfResponse.text || '{}');
+          usedNativePdf = true;
+        } else {
+          throw textErr;
+        }
+      }
+    } else {
+      // PDF without usable text: use native PDF directly
+      console.log('[ResumeServer] Using native-PDF extraction mode.');
+      const pdfResponse = await executeGeminiCall(nativePdfPayload);
+      parsedJson = JSON.parse(pdfResponse.text || '{}');
+      usedNativePdf = true;
+    }
+
+    if (!parsedJson || typeof parsedJson !== 'object' || typeof parsedJson.isResumeOrCv !== 'boolean') {
+      throw new Error('Received unparseable or empty response from extraction models');
+    }
 
     if (parsedJson.isResumeOrCv === false) {
-      return res.status(422).json({
+      console.log(`[ResumeServer] Document classified as non-resume (${parsedJson.documentType || 'unrelated'}).`);
+      return res.status(200).json({
         success: false,
         isInvalidDocumentType: true,
+        originalStatus: 422,
         documentType: parsedJson.documentType || 'unrelated_document',
-        error: 'This document does not appear to be a resume or CV. Please choose a different file or enter your information manually.',
+        error:
+          'This document does not appear to be a resume or CV. Please choose a different file or enter your information manually.',
       });
     }
 
-    return res.json({
+    console.log(
+      `[ResumeServer] Extraction completed successfully using ${usedNativePdf ? 'native-PDF' : 'extracted-text'} mode for "${parsedJson.fullName || cleanFileName}".`
+    );
+
+    return res.status(200).json({
       success: true,
       data: parsedJson,
       extractedText: extractedPlainText,
       source: 'gemini-3.8-flash',
+      mode: usedNativePdf ? 'native-pdf' : 'extracted-text',
     });
   } catch (error: any) {
     const errStatus = error?.status || error?.statusCode || error?.code || error?.error?.code;
@@ -267,19 +365,46 @@ CRITICAL DOCUMENT CLASSIFICATION & DATA QUALITY INSTRUCTIONS:
 
     if (isTemporaryUnavailable) {
       // Treat expected temporary service outage or rate-limit as recoverable status without console.error
-      return res.status(503).json({
-        error: 'AI resume extraction is temporarily unavailable. Your document has not been processed yet.',
+      const isRateLimit = errStatus === 429 || /429|resource_exhausted|rate[\s-]limit|too many requests/i.test(errStr);
+      const originalStatus = isRateLimit ? 429 : 503;
+
+      // Extract Retry-After if available in headers or details
+      let retryAfter: number | null = null;
+      const rawRetryAfter =
+        error?.headers?.get?.('retry-after') ||
+        error?.headers?.['retry-after'] ||
+        error?.response?.headers?.get?.('retry-after') ||
+        error?.details?.[0]?.metadata?.retry_delay;
+      if (rawRetryAfter) {
+        const parsed = parseInt(String(rawRetryAfter), 10);
+        if (!isNaN(parsed) && parsed > 0 && parsed <= 300) {
+          retryAfter = parsed;
+        }
+      }
+
+      console.warn(`[ResumeServer] Service unavailable/rate-limited (status: ${originalStatus}, retryAfter: ${retryAfter || 'default'}).`);
+
+      return res.status(200).json({
+        success: false,
         temporaryUnavailable: true,
+        isRateLimited: isRateLimit,
+        retryAfter,
+        originalStatus,
+        error: isRateLimit
+          ? 'AI extraction is temporarily rate-limited. Your document is still loaded. Please wait a little while and retry, or enter your information manually.'
+          : 'AI resume extraction is temporarily unavailable. Your document has not been processed yet.',
       });
     }
 
     // Unexpected programming errors should still be logged normally
     console.error('Unexpected error in /api/extract-resume:', error);
 
-    return res.status(500).json({
+    return res.status(200).json({
+      success: false,
+      unexpectedError: true,
+      originalStatus: 500,
       error:
         "We couldn't process this document because of an unexpected extraction error. Your file is still loaded. Please retry or enter your information manually.",
-      unexpectedError: true,
       details: error.message || 'Internal server error',
     });
   }
@@ -291,6 +416,14 @@ app.get('/api/health', (_req, res) => {
     status: 'ok',
     brand: 'Cascade Peak Outfitters',
     hasGeminiKey: Boolean(apiKey),
+  });
+});
+
+// Catch-all for undefined /api/* routes so they never fall through to Vite/SPA index.html
+app.all('/api/*', (req, res) => {
+  return res.status(404).json({
+    error: `API route not found: ${req.method} ${req.path}`,
+    unexpectedError: true,
   });
 });
 

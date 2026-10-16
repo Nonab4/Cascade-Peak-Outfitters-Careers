@@ -7,6 +7,7 @@ export interface ParseResumeOptions {
   fileName?: string;
   fileSize?: number;
   onStatusUpdate?: (status: string) => void;
+  signal?: AbortSignal;
 }
 
 // Standardization & validation helpers
@@ -80,7 +81,7 @@ export type ParseResumeResult =
 export async function parseResumeWithAI(
   options: ParseResumeOptions
 ): Promise<ParseResumeResult> {
-  const { resumeText = '', fileBase64, mimeType, fileName = 'resume.txt', fileSize, onStatusUpdate } = options;
+  const { resumeText = '', fileBase64, mimeType, fileName = 'resume.txt', fileSize, onStatusUpdate, signal } = options;
 
   if (resumeText && isLikelyUnrelatedDocument(resumeText)) {
     return {
@@ -91,22 +92,32 @@ export async function parseResumeWithAI(
     };
   }
 
-  // Automatic retry schedule for temporary availability errors (429 / 503)
-  // Attempt 1: normal request
-  // Retry 1: after ~2s
-  // Retry 2: after ~5s
-  // Retry 3: after ~10s
-  const RETRY_DELAYS = [2000, 5000, 10000];
-  const maxAttempts = 1 + RETRY_DELAYS.length; // 4 total attempts
+  // Separate retry schedules:
+  // - 503 Temporary Service Outages: 3 retries at ~2s, ~5s, ~10s
+  // - 429 Rate Limits: up to 2 retries at ~20s and ~45s (or respecting server Retry-After)
+  const OUTAGE_503_DELAYS = [2000, 5000, 10000];
+  const RATE_LIMIT_429_DELAYS = [20000, 45000];
+  const MAX_TOTAL_ATTEMPTS = 5;
 
   let response: Response | null = null;
   let lastTemporaryError: string = '';
+  let parsedPayload: any = null;
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const isRetry = attempt > 1;
-    if (isRetry) {
-      console.log(`[ResumeParser] Starting automatic retry ${attempt - 1} of ${RETRY_DELAYS.length} for ${fileName}...`);
-      onStatusUpdate?.('AI extraction is temporarily busy. Retrying automatically…');
+  let count503Retries = 0;
+  const max503Retries = OUTAGE_503_DELAYS.length; // 3 retries
+
+  let count429Retries = 0;
+  const max429Retries = RATE_LIMIT_429_DELAYS.length; // 2 retries
+
+  for (let attempt = 1; attempt <= MAX_TOTAL_ATTEMPTS; attempt++) {
+    if (signal?.aborted) {
+      console.log(`[ResumeParser] Extraction aborted by caller.`);
+      return {
+        success: false,
+        unexpectedError: true,
+        temporaryUnavailable: false,
+        message: 'Extraction was cancelled because a new document was selected.',
+      };
     }
 
     try {
@@ -114,13 +125,25 @@ export async function parseResumeWithAI(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resumeText, fileBase64, mimeType, fileName }),
+        signal,
       });
     } catch (_netErr: any) {
-      // Network failure treated as temporary availability issue
+      if (signal?.aborted || _netErr?.name === 'AbortError') {
+        console.log(`[ResumeParser] Request aborted.`);
+        return {
+          success: false,
+          unexpectedError: true,
+          temporaryUnavailable: false,
+          message: 'Extraction was cancelled because a new document was selected.',
+        };
+      }
+      // Network failure treated as temporary 503-style outage
       console.warn(`[ResumeParser] Network request failed on attempt ${attempt}:`, _netErr);
       lastTemporaryError = 'AI resume extraction is temporarily unavailable. Your document has not been processed yet.';
-      if (attempt < maxAttempts) {
-        const delay = RETRY_DELAYS[attempt - 1];
+      if (count503Retries < max503Retries) {
+        const delay = OUTAGE_503_DELAYS[count503Retries];
+        count503Retries++;
+        console.log(`[ResumeParser] 503 temporary service outage detected. Automatic retry ${count503Retries}/${max503Retries} scheduled in ${delay / 1000}s.`);
         onStatusUpdate?.('AI extraction is temporarily busy. Retrying automatically…');
         await new Promise((resolve) => setTimeout(resolve, delay));
         continue;
@@ -132,144 +155,174 @@ export async function parseResumeWithAI(
       };
     }
 
-    // 422: Invalid document type - never retry
-    if (response.status === 422) {
-      console.log(`[ResumeParser] Document identified as non-resume (422). Halting retries.`);
-      const errData = await response.json().catch(() => ({}));
-      return {
-        success: false,
-        isInvalidDocumentType: true,
-        message:
-          errData.error ||
-          'This document does not appear to be a resume or CV. Please choose a different file or enter your information manually.',
-      };
-    }
+    // Inspect Content-Type: verify we received JSON and not an HTML routing fallback
+    const contentType = response.headers?.get('content-type') || 'unknown';
+    console.log(
+      `[ResumeParser] HTTP ${response.status} received from ${response.url || '/api/extract-resume'} (Content-Type: ${contentType}) on attempt ${attempt}.`
+    );
 
-    // 503 or 429: Temporary availability / rate-limit error - eligible for automatic retry
-    if (response.status === 503 || response.status === 429) {
-      const errData = await response.json().catch(() => ({}));
-      if (errData.isInvalidDocumentType) {
-        return {
-          success: false,
-          isInvalidDocumentType: true,
-          message:
-            errData.error ||
-            'This document does not appear to be a resume or CV. Please choose a different file or enter your information manually.',
-        };
-      }
-
-      lastTemporaryError =
-        errData.error ||
-        'AI resume extraction is temporarily unavailable. Your document has not been processed yet.';
-
-      console.warn(
-        `[ResumeParser] Temporary availability status (${response.status}) on attempt ${attempt}/${maxAttempts}.`
+    if (!contentType.includes('application/json')) {
+      const previewText = await response.text().catch(() => '');
+      console.error(
+        `[ResumeParser] Expected JSON response from ${response.url || '/api/extract-resume'} (status: ${response.status}) but received Content-Type: "${contentType}". Route returned HTML instead of API payload. Preview: ${previewText.slice(0, 120)}...`
       );
-
-      if (attempt < maxAttempts) {
-        const delay = RETRY_DELAYS[attempt - 1];
-        console.log(`[ResumeParser] Waiting ${delay / 1000}s before retry ${attempt}...`);
-        onStatusUpdate?.('AI extraction is temporarily busy. Retrying automatically…');
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        continue;
-      }
-
-      console.log(`[ResumeParser] All automatic retries exhausted for temporary outage.`);
-      return {
-        success: false,
-        temporaryUnavailable: true,
-        message: lastTemporaryError,
-      };
-    }
-
-    // Other non-ok responses
-    if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
-      const errStr = String(errData.error || errData.message || '');
-
-      if (errData.isInvalidDocumentType) {
-        return {
-          success: false,
-          isInvalidDocumentType: true,
-          message:
-            errData.error ||
-            'This document does not appear to be a resume or CV. Please choose a different file or enter your information manually.',
-        };
-      }
-
-      const isTemporary =
-        errData.temporaryUnavailable ||
-        /503|429|unavailable|high[\s-]demand|overloaded|resource exhausted|rate limit|quota|temporarily unavailable/i.test(errStr);
-
-      if (isTemporary) {
-        lastTemporaryError =
-          errData.error ||
-          'AI resume extraction is temporarily unavailable. Your document has not been processed yet.';
-
-        console.warn(`[ResumeParser] Temporary error signal in response payload on attempt ${attempt}/${maxAttempts}.`);
-
-        if (attempt < maxAttempts) {
-          const delay = RETRY_DELAYS[attempt - 1];
-          onStatusUpdate?.('AI extraction is temporarily busy. Retrying automatically…');
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          continue;
-        }
-
-        return {
-          success: false,
-          temporaryUnavailable: true,
-          message: lastTemporaryError,
-        };
-      }
-
-      // Unexpected server/extraction error (500, etc.) - do not retry indefinitely
-      console.error(`[ResumeParser] Unexpected error status ${response.status} on attempt ${attempt}. Halting retries.`);
       return {
         success: false,
         unexpectedError: true,
         temporaryUnavailable: false,
         message:
-          errData.error ||
+          'We received an unexpected response while processing this document. Your file is still loaded. Please retry or enter your information manually.',
+      };
+    }
+
+    let result: any = null;
+    try {
+      const rawText = await response.text();
+      result = JSON.parse(rawText);
+    } catch (parseErr) {
+      console.error(`[ResumeParser] Failed to parse JSON response on attempt ${attempt}:`, parseErr);
+      return {
+        success: false,
+        unexpectedError: true,
+        temporaryUnavailable: false,
+        message:
+          'We received an unexpected response while processing this document. Your file is still loaded. Please retry or enter your information manually.',
+      };
+    }
+
+    // 1. Wrong/non-resume document (isInvalidDocumentType === true) -> stop immediately
+    if (result?.isInvalidDocumentType || result?.originalStatus === 422) {
+      console.log(`[ResumeParser] Document identified as non-resume (originalStatus: ${result.originalStatus || 422}). Halting retries.`);
+      return {
+        success: false,
+        isInvalidDocumentType: true,
+        message:
+          result.error ||
+          'This document does not appear to be a resume or CV. Please choose a different file or enter your information manually.',
+      };
+    }
+
+    // 2. Separate 429 Rate Limit from 503 Outage
+    const is429RateLimit =
+      result?.isRateLimited === true ||
+      result?.originalStatus === 429 ||
+      response.status === 429 ||
+      /rate[\s-]limit|resource_exhausted|too many requests/i.test(String(result?.error || ''));
+
+    if (is429RateLimit) {
+      console.warn(
+        `[ResumeParser] 429 rate limit encountered (attempt ${attempt}). count429Retries: ${count429Retries}/${max429Retries}.`
+      );
+
+      lastTemporaryError =
+        result?.error ||
+        'AI extraction is temporarily rate-limited. Your document is still loaded. Please wait a little while and retry, or enter your information manually.';
+
+      if (count429Retries < max429Retries) {
+        // Respect Retry-After from server if provided, otherwise use backoff schedule [20s, 45s]
+        const serverRetryAfterMs = result?.retryAfter ? result.retryAfter * 1000 : null;
+        const delay = serverRetryAfterMs || RATE_LIMIT_429_DELAYS[count429Retries];
+        count429Retries++;
+
+        console.log(
+          `[ResumeParser] 429 rate limit: Automatic retry ${count429Retries}/${max429Retries} scheduled in ${Math.round(
+            delay / 1000
+          )}s (retry delay: ${Math.round(delay / 1000)}s).`
+        );
+        onStatusUpdate?.('AI extraction is temporarily rate-limited. We’ll retry automatically in a moment…');
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
+      }
+
+      console.log(`[ResumeParser] All automatic 429 rate-limit retries exhausted (${max429Retries} retries).`);
+      return {
+        success: false,
+        temporaryUnavailable: true,
+        message:
+          'AI extraction is temporarily rate-limited. Your document is still loaded. Please wait a little while and retry, or enter your information manually.',
+      };
+    }
+
+    // 3. 503 Service Outage / High-Demand Availability Failure
+    const is503Outage =
+      result?.temporaryUnavailable === true ||
+      result?.originalStatus === 503 ||
+      response.status === 503;
+
+    if (is503Outage) {
+      console.warn(
+        `[ResumeParser] 503 temporary service outage encountered (attempt ${attempt}). count503Retries: ${count503Retries}/${max503Retries}.`
+      );
+
+      lastTemporaryError =
+        result?.error ||
+        'AI resume extraction is temporarily unavailable. Your document has not been processed yet.';
+
+      if (count503Retries < max503Retries) {
+        const delay = OUTAGE_503_DELAYS[count503Retries];
+        count503Retries++;
+        console.log(
+          `[ResumeParser] 503 temporary service outage: Automatic retry ${count503Retries}/${max503Retries} scheduled in ${
+            delay / 1000
+          }s (retry delay: ${delay / 1000}s).`
+        );
+        onStatusUpdate?.('AI extraction is temporarily busy. Retrying automatically…');
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
+      }
+
+      console.log(`[ResumeParser] All automatic 503 service-outage retries exhausted (${max503Retries} retries).`);
+      return {
+        success: false,
+        temporaryUnavailable: true,
+        message: lastTemporaryError,
+      };
+    }
+
+    // 4. Unexpected extraction error (unexpectedError === true) -> do not retry indefinitely
+    if (result?.unexpectedError === true || result?.originalStatus === 500) {
+      console.error(`[ResumeParser] Server reported unexpected extraction error (originalStatus: ${result?.originalStatus || 500}).`);
+      return {
+        success: false,
+        unexpectedError: true,
+        temporaryUnavailable: false,
+        message:
+          result?.error ||
           "We couldn't process this document because of an unexpected extraction error. Your file is still loaded. Please retry or enter your information manually.",
       };
     }
 
-    // Response is OK (200) - process extracted data
-    console.log(`[ResumeParser] Extraction request succeeded on attempt ${attempt} (${isRetry ? `retry ${attempt - 1}` : 'initial attempt'}).`);
+    // 4. Success check: success === true and valid data object exists
+    if (!result || result.success !== true || !result.data || typeof result.data !== 'object') {
+      console.error(
+        `[ResumeParser] Malformed or unexpected response payload on attempt ${attempt}:`,
+        result
+      );
+      return {
+        success: false,
+        unexpectedError: true,
+        temporaryUnavailable: false,
+        message:
+          'We received an unexpected response while processing this document. Your file is still loaded. Please retry or enter your information manually.',
+      };
+    }
+
+    console.log(`[ResumeParser] Response payload validated successfully on attempt ${attempt}.`);
+    parsedPayload = result;
     break;
   }
 
-  if (!response || !response.ok) {
-    return {
-      success: false,
-      temporaryUnavailable: true,
-      message: lastTemporaryError || 'AI resume extraction is temporarily unavailable. Your document has not been processed yet.',
-    };
-  }
-
-  const result = await response.json().catch(() => ({}));
-
-  if (result.isInvalidDocumentType) {
-    return {
-      success: false,
-      isInvalidDocumentType: true,
-      message:
-        result.error ||
-        'This document does not appear to be a resume or CV. Please choose a different file or enter your information manually.',
-    };
-  }
-
-  if (result.temporaryUnavailable || !result.success || !result.data) {
+  if (!parsedPayload || !parsedPayload.data) {
     return {
       success: false,
       temporaryUnavailable: true,
       message:
-        result.error ||
+        lastTemporaryError ||
         'AI resume extraction is temporarily unavailable. Your document has not been processed yet.',
     };
   }
 
-  const raw = result.data;
+  const raw = parsedPayload.data;
   const missingFields: string[] = [];
 
   // Check required personal fields
@@ -370,6 +423,8 @@ export async function parseResumeWithAI(
 
   const formattedPhone = raw.phone ? standardizePhoneNumber(raw.phone) : '';
 
+  console.log(`[ResumeParser] Final extraction success: Applicant data processed for "${raw.fullName || 'Candidate'}" (${missingFields.length} missing required fields detected).`);
+
   return {
     success: true,
     usedAI: true,
@@ -384,7 +439,7 @@ export async function parseResumeWithAI(
       workExperience: cleanWorkExperience,
       skills: Array.from(new Set(cleanSkills)),
       missingFields,
-      rawText: result.extractedText || resumeText,
+      rawText: parsedPayload.extractedText || resumeText,
       fileName,
       fileSize,
       extractedAt: new Date().toISOString(),

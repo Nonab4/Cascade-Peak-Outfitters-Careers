@@ -37,10 +37,13 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
   const [isInvalidDoc, setIsInvalidDoc] = useState(false);
   const [selectedSampleId, setSelectedSampleId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const extractionInProgressRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (isExtracting) return;
     if (e.type === 'dragenter' || e.type === 'dragover') {
       setDragActive(true);
     } else if (e.type === 'dragleave') {
@@ -52,12 +55,14 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
+    if (isExtracting) return;
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       handleSelectedFile(e.dataTransfer.files[0]);
     }
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isExtracting) return;
     if (e.target.files && e.target.files[0]) {
       handleSelectedFile(e.target.files[0]);
     }
@@ -124,6 +129,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
   };
 
   const handleRetryExtraction = () => {
+    if (isExtracting) return;
     if (uploadedFile) {
       handleSelectedFile(uploadedFile);
     } else if (activeTab === 'paste' && rawText.trim()) {
@@ -135,15 +141,28 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
   };
 
   const handleSelectedFile = async (file: File) => {
+    if (extractionInProgressRef.current) {
+      console.warn('[Step1UploadCV] Extraction already in flight, ignoring duplicate request.');
+      return;
+    }
+
+    // Cancel any prior in-flight request if user replaces document
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    extractionInProgressRef.current = true;
+
     // Treat new file selection as replacing any previously loaded applicant data
     onClearExistingData?.();
     setUploadedFile(file);
     setExtractionError(null);
     setIsInvalidDoc(false);
     setSelectedSampleId(null);
+    setIsExtracting(true);
 
     try {
-      setIsExtracting(true);
       setExtractionProgress('Reading document buffer...');
 
       const base64Data = await readFileAsBase64(file);
@@ -161,7 +180,12 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
         fileSize: file.size,
         resumeText: plainText,
         onStatusUpdate: (msg) => setExtractionProgress(msg),
+        signal: controller.signal,
       });
+
+      if (controller.signal.aborted) {
+        return;
+      }
 
       if (!result.success) {
         if (result.isInvalidDocumentType) {
@@ -178,8 +202,13 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
       setExtractionProgress('Validating fields and flagging missing data...');
       await new Promise((r) => setTimeout(r, 350));
 
-      onDataExtracted(result.data);
+      if (!controller.signal.aborted) {
+        onDataExtracted(result.data);
+      }
     } catch (err: any) {
+      if (controller.signal.aborted) {
+        return;
+      }
       // Unexpected programming errors should still be logged normally for development troubleshooting
       console.error('Unexpected error during file extraction:', err);
       setIsInvalidDoc(false);
@@ -187,12 +216,14 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
         "We couldn't process this document because of an unexpected extraction error. Your file is still loaded. Please retry or enter your information manually."
       );
     } finally {
+      extractionInProgressRef.current = false;
       setIsExtracting(false);
       setExtractionProgress('');
     }
   };
 
   const handleSampleSelect = async (sample: SampleResume) => {
+    if (isExtracting) return;
     onClearExistingData?.();
     setSelectedSampleId(sample.id);
     setRawText(sample.rawText);
@@ -226,10 +257,18 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
   };
 
   const handlePasteExtract = async () => {
+    if (extractionInProgressRef.current) return;
     if (!rawText.trim()) {
       setExtractionError('Please paste resume text before extracting.');
       return;
     }
+
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    extractionInProgressRef.current = true;
 
     onClearExistingData?.();
     setIsExtracting(true);
@@ -243,7 +282,12 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
         fileName: 'pasted_resume.txt',
         fileSize: rawText.length,
         onStatusUpdate: (msg) => setExtractionProgress(msg),
+        signal: controller.signal,
       });
+
+      if (controller.signal.aborted) {
+        return;
+      }
 
       if (!result.success) {
         if (result.isInvalidDocumentType) {
@@ -257,8 +301,13 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
         return;
       }
 
-      onDataExtracted(result.data);
+      if (!controller.signal.aborted) {
+        onDataExtracted(result.data);
+      }
     } catch (err: any) {
+      if (controller.signal.aborted) {
+        return;
+      }
       // Unexpected programming errors should still be logged normally for development troubleshooting
       console.error('Unexpected error during paste extraction:', err);
       setIsInvalidDoc(false);
@@ -266,6 +315,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
         "We couldn't process this document because of an unexpected extraction error. Your file is still loaded. Please retry or enter your information manually."
       );
     } finally {
+      extractionInProgressRef.current = false;
       setIsExtracting(false);
       setExtractionProgress('');
     }
