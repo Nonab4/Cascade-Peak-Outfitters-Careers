@@ -117,7 +117,7 @@ export async function parseResumeWithAI(
     };
   }
 
-  if (response.status === 503) {
+  if (response.status === 503 || response.status === 429) {
     const errData = await response.json().catch(() => ({}));
     if (errData.isInvalidDocumentType) {
       return {
@@ -142,7 +142,8 @@ export async function parseResumeWithAI(
     const errStr = String(errData.error || errData.message || '');
     const isTemp =
       errData.temporaryUnavailable ||
-      /503|unavailable|high[\s-]demand|overloaded|resource exhausted|rate limit|temporarily unavailable/i.test(errStr);
+      response.status === 500 ||
+      /503|429|unavailable|high[\s-]demand|overloaded|resource exhausted|rate limit|quota|temporarily unavailable/i.test(errStr);
 
     if (errData.isInvalidDocumentType) {
       return {
@@ -164,8 +165,12 @@ export async function parseResumeWithAI(
       };
     }
 
-    // Unexpected server status should throw as normal programming error
-    throw new Error(`Unexpected server response ${response.status}: ${errStr}`);
+    return {
+      success: false,
+      temporaryUnavailable: true,
+      message:
+        'AI resume extraction is temporarily unavailable. Your document has not been processed yet.',
+    };
   }
 
   const result = await response.json().catch(() => ({}));

@@ -6,9 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import mammoth from 'mammoth';
-
-const require = createRequire(import.meta.url);
-const pdfParse = require('pdf-parse');
+import { PDFParse } from 'pdf-parse';
 
 dotenv.config();
 
@@ -37,12 +35,22 @@ async function extractTextFromBuffer(buffer: Buffer, mimeType: string, fileName:
   const lowerName = fileName.toLowerCase();
   
   if (mimeType === 'application/pdf' || lowerName.endsWith('.pdf')) {
+    let parser: any = null;
     try {
-      const pdfData = await pdfParse(buffer);
-      return pdfData.text || '';
+      parser = new PDFParse({ data: buffer });
+      const result = await parser.getText();
+      return result?.text || '';
     } catch (err) {
-      console.warn('pdfParse failed, returning empty text:', err);
+      console.warn('PDF text extraction failed, returning empty text:', err);
       return '';
+    } finally {
+      if (parser && typeof parser.destroy === 'function') {
+        try {
+          await parser.destroy();
+        } catch {
+          // ignore cleanup errors
+        }
+      }
     }
   }
 
@@ -244,15 +252,21 @@ CRITICAL DOCUMENT CLASSIFICATION & DATA QUALITY INSTRUCTIONS:
       source: 'gemini-3.8-flash',
     });
   } catch (error: any) {
-    const errStr = String(error?.message || error?.statusText || '');
+    const errStatus = error?.status || error?.statusCode || error?.code || error?.error?.code;
+    const errMessage = error?.message || error?.error?.message || '';
+    const errStatusText = error?.statusText || error?.error?.status || '';
+    const errStr = `${errStatus} ${errMessage} ${errStatusText} ${JSON.stringify(error?.details || '')}`.toLowerCase();
+
     const isTemporaryUnavailable =
-      error?.status === 503 ||
-      error?.statusCode === 503 ||
-      error?.code === 503 ||
-      /503|unavailable|high[\s-]demand|overloaded|resource exhausted|rate limit|temporarily unavailable/i.test(errStr);
+      errStatus === 503 ||
+      errStatus === 429 ||
+      errStatus === 'RESOURCE_EXHAUSTED' ||
+      /503|429|resource_exhausted|resource exhausted|quota|rate[\s-]limit|too many requests|unavailable|high[\s-]demand|overloaded|temporarily unavailable/i.test(
+        errStr
+      );
 
     if (isTemporaryUnavailable) {
-      // Treat expected temporary service outage as recoverable status without console.error
+      // Treat expected temporary service outage or rate-limit as recoverable status without console.error
       return res.status(503).json({
         error: 'AI resume extraction is temporarily unavailable. Your document has not been processed yet.',
         temporaryUnavailable: true,
