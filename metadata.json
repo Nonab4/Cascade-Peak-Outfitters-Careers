@@ -1,0 +1,6 @@
+{
+  "name": "Cascade Peak Outfitters Careers",
+  "description": "Streamlined applicant intake prototype for Cascade Peak Outfitters with automated CV parsing, missing data flagging, multi-position selection, and verification review.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
