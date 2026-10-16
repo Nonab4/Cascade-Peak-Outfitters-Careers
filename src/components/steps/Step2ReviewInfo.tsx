@@ -710,20 +710,56 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
                   />
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-semibold text-stone-700 mb-1">
-                    Dates / Duration
-                  </label>
-                  <input
-                    type="text"
-                    value={work.startDate ? `${work.startDate} - ${work.endDate || 'Present'}` : ''}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      handleUpdateWork(work.id, 'startDate', val);
-                    }}
-                    placeholder="e.g. 2021 - Present"
-                    className="w-full px-3 py-2 text-xs sm:text-sm rounded border border-stone-300 focus:border-emerald-700 bg-white"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:col-span-2">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-stone-700 mb-1">
+                      Start Date
+                    </label>
+                    <input
+                      type="text"
+                      value={work.startDate || ''}
+                      onChange={(e) => handleUpdateWork(work.id, 'startDate', e.target.value)}
+                      placeholder="e.g. 2021 or Sep 2021"
+                      className="w-full px-3 py-2 text-xs sm:text-sm rounded border border-stone-300 focus:border-emerald-700 bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[11px] font-semibold text-stone-700">
+                        End Date
+                      </label>
+                      <label className="inline-flex items-center gap-1.5 text-[11px] text-stone-600 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(work.current || work.endDate?.toLowerCase() === 'present')}
+                          onChange={(e) => {
+                            const isCurrent = e.target.checked;
+                            const updated = formData.workExperience.map((item) =>
+                              item.id === work.id
+                                ? { ...item, current: isCurrent, endDate: isCurrent ? 'Present' : '' }
+                                : item
+                            );
+                            handleFieldChange('workExperience', updated);
+                          }}
+                          className="rounded border-stone-300 text-emerald-800 focus:ring-emerald-700"
+                        />
+                        <span>Current (Present)</span>
+                      </label>
+                    </div>
+                    <input
+                      type="text"
+                      value={work.current ? 'Present' : (work.endDate || '')}
+                      disabled={Boolean(work.current)}
+                      onChange={(e) => handleUpdateWork(work.id, 'endDate', e.target.value)}
+                      placeholder="e.g. 2024 or Present"
+                      className={`w-full px-3 py-2 text-xs sm:text-sm rounded border bg-white ${
+                        work.current
+                          ? 'border-emerald-300 bg-emerald-50/50 text-emerald-900 font-medium'
+                          : 'border-stone-300 focus:border-emerald-700'
+                      }`}
+                    />
+                  </div>
                 </div>
 
                 <div className="sm:col-span-2">
@@ -770,18 +806,44 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
               />
               <input
                 type="text"
-                placeholder="Start Date (e.g. 2021)"
+                placeholder="Start Date (e.g. 2021 or Sep 2021)"
                 value={draftWork.startDate}
                 onChange={(e) => setDraftWork({ ...draftWork, startDate: e.target.value })}
                 className="px-3 py-2 text-xs rounded border border-stone-300 bg-white"
               />
-              <input
-                type="text"
-                placeholder="End Date (e.g. Present)"
-                value={draftWork.endDate}
-                onChange={(e) => setDraftWork({ ...draftWork, endDate: e.target.value })}
-                className="px-3 py-2 text-xs rounded border border-stone-300 bg-white"
-              />
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-stone-500">End Date</span>
+                  <label className="inline-flex items-center gap-1.5 text-[11px] text-stone-600 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(draftWork.current)}
+                      onChange={(e) => {
+                        const isCurrent = e.target.checked;
+                        setDraftWork({
+                          ...draftWork,
+                          current: isCurrent,
+                          endDate: isCurrent ? 'Present' : '',
+                        });
+                      }}
+                      className="rounded border-stone-300 text-emerald-800 focus:ring-emerald-700"
+                    />
+                    <span>Current (Present)</span>
+                  </label>
+                </div>
+                <input
+                  type="text"
+                  placeholder="End Date (e.g. 2024 or Present)"
+                  value={draftWork.current ? 'Present' : draftWork.endDate}
+                  disabled={Boolean(draftWork.current)}
+                  onChange={(e) => setDraftWork({ ...draftWork, endDate: e.target.value })}
+                  className={`px-3 py-2 text-xs rounded border bg-white ${
+                    draftWork.current
+                      ? 'border-emerald-300 bg-emerald-50/50 text-emerald-900 font-medium'
+                      : 'border-stone-300'
+                  }`}
+                />
+              </div>
               <textarea
                 placeholder="Description of duties, customer consultations, team achievements..."
                 value={draftWork.description}

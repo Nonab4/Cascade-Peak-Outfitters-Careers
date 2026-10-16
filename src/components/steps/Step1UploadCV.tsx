@@ -19,11 +19,13 @@ import { parseResumeWithAI } from '../../utils/resumeParser';
 interface Step1UploadCVProps {
   onDataExtracted: (data: ApplicantData) => void;
   existingData: ApplicantData | null;
+  onClearExistingData?: () => void;
 }
 
 export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
   onDataExtracted,
   existingData,
+  onClearExistingData,
 }) => {
   const [activeTab, setActiveTab] = useState<'upload' | 'paste' | 'samples'>('upload');
   const [dragActive, setDragActive] = useState(false);
@@ -133,6 +135,8 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
   };
 
   const handleSelectedFile = async (file: File) => {
+    // Treat new file selection as replacing any previously loaded applicant data
+    onClearExistingData?.();
     setUploadedFile(file);
     setExtractionError(null);
     setIsInvalidDoc(false);
@@ -156,6 +160,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
         fileName: file.name,
         fileSize: file.size,
         resumeText: plainText,
+        onStatusUpdate: (msg) => setExtractionProgress(msg),
       });
 
       if (!result.success) {
@@ -175,11 +180,11 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
 
       onDataExtracted(result.data);
     } catch (err: any) {
-      // Unexpected programming errors should still be logged normally
+      // Unexpected programming errors should still be logged normally for development troubleshooting
       console.error('Unexpected error during file extraction:', err);
       setIsInvalidDoc(false);
       setExtractionError(
-        'AI resume extraction is temporarily unavailable. Your document has not been processed yet.'
+        "We couldn't process this document because of an unexpected extraction error. Your file is still loaded. Please retry or enter your information manually."
       );
     } finally {
       setIsExtracting(false);
@@ -188,6 +193,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
   };
 
   const handleSampleSelect = async (sample: SampleResume) => {
+    onClearExistingData?.();
     setSelectedSampleId(sample.id);
     setRawText(sample.rawText);
     const fileName = `${sample.applicantName.toLowerCase().replace(/\s+/g, '_')}_cv.txt`;
@@ -225,6 +231,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
       return;
     }
 
+    onClearExistingData?.();
     setIsExtracting(true);
     setExtractionError(null);
     setIsInvalidDoc(false);
@@ -235,6 +242,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
         resumeText: rawText,
         fileName: 'pasted_resume.txt',
         fileSize: rawText.length,
+        onStatusUpdate: (msg) => setExtractionProgress(msg),
       });
 
       if (!result.success) {
@@ -251,11 +259,11 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
 
       onDataExtracted(result.data);
     } catch (err: any) {
-      // Unexpected programming errors should still be logged normally
+      // Unexpected programming errors should still be logged normally for development troubleshooting
       console.error('Unexpected error during paste extraction:', err);
       setIsInvalidDoc(false);
       setExtractionError(
-        'AI resume extraction is temporarily unavailable. Your document has not been processed yet.'
+        "We couldn't process this document because of an unexpected extraction error. Your file is still loaded. Please retry or enter your information manually."
       );
     } finally {
       setIsExtracting(false);

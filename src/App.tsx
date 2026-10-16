@@ -159,6 +159,10 @@ export default function App() {
               <Step1UploadCV
                 onDataExtracted={handleDataExtracted}
                 existingData={applicantData}
+                onClearExistingData={() => {
+                  setApplicantData(null);
+                  setMaxUnlockedStep(1);
+                }}
               />
             </div>
 

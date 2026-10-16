@@ -48,11 +48,12 @@ export const PrototypeOverviewModal: React.FC<PrototypeOverviewModalProps> = ({
 
   if (!isOpen) return null;
 
-  const previewPayload = currentSubmission || {
+  // Fictional developer example data only — never uses or displays current applicant's information
+  const previewPayload = {
     referenceId: 'CPO-DEV-PREVIEW-2026',
-    submittedAt: new Date().toISOString(),
+    submittedAt: '2026-03-15T14:32:00.000Z',
     status: 'STANDARDIZED_FOR_FUTURE_INTEGRATION',
-    applicant: applicantData || {
+    applicant: {
       fullName: 'Jordan Vance',
       email: 'jordan.vance@example.com',
       phone: '(206) 555-0192',
@@ -84,18 +85,12 @@ export const PrototypeOverviewModal: React.FC<PrototypeOverviewModalProps> = ({
       missingFields: [],
       fileName: 'jordan_vance_cv.pdf',
     },
-    selectedPositions:
-      selectedPositions && selectedPositions.length > 0
-        ? selectedPositions.map((pos) => ({
-            id: pos.id,
-            title: pos.title,
-          }))
-        : [
-            {
-              id: 'business-analyst',
-              title: 'Business Analyst',
-            },
-          ],
+    selectedPositions: [
+      {
+        id: 'business-analyst',
+        title: 'Business Analyst',
+      },
+    ],
     metadata: {
       intakeEngine: 'Cascade Peak Automated CV Parser (Gemini 3.8 Flash)',
       validationStatus: 'PROTOTYPE_VALIDATED',

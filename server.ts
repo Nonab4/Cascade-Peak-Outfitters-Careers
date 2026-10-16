@@ -277,7 +277,9 @@ CRITICAL DOCUMENT CLASSIFICATION & DATA QUALITY INSTRUCTIONS:
     console.error('Unexpected error in /api/extract-resume:', error);
 
     return res.status(500).json({
-      error: 'An unexpected error occurred during extraction.',
+      error:
+        "We couldn't process this document because of an unexpected extraction error. Your file is still loaded. Please retry or enter your information manually.",
+      unexpectedError: true,
       details: error.message || 'Internal server error',
     });
   }
