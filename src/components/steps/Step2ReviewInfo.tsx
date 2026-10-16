@@ -117,9 +117,6 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
   if (!hasWorkExperience || !areAllWorkItemsValid) {
     validationErrors.push('At least one Work Experience record with Job Title and Company is required.');
   }
-  if (!hasSkills) {
-    validationErrors.push('At least one Skill or competency is required.');
-  }
 
   const isFormValid = validationErrors.length === 0;
 
@@ -287,7 +284,7 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
           <div className="mt-6 p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3">
             <CheckCircle2 className="w-5 h-5 text-emerald-700 shrink-0" />
             <p className="text-xs font-medium text-emerald-900">
-              All required fields, contact information, education records, and skills are complete and properly formatted.
+              All required fields, contact information, and education records are complete and properly formatted.
             </p>
           </div>
         )}
@@ -807,16 +804,16 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
         )}
       </div>
 
-      {/* SECTION 4: SKILLS & COMPETENCIES */}
+      {/* SECTION 4: SKILLS & COMPETENCIES (OPTIONAL) */}
       <div className="bg-white rounded-xl border border-stone-200 shadow-xs p-6 sm:p-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h3 className="text-base font-bold text-stone-900 font-['Plus_Jakarta_Sans'] flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-emerald-800" />
-              <span>Skills & Competencies <span className="text-rose-600">*</span></span>
+              <span>Skills & Competencies</span>
             </h3>
             <p className="text-xs text-stone-500 mt-0.5">
-              Extracted skills and qualifications. At least one skill is required.
+              Extracted skills and qualifications. Add or edit skills if applicable.
             </p>
           </div>
 
@@ -831,7 +828,7 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
             <button
               type="submit"
               disabled={!newSkillInput.trim()}
-              className="px-3 py-1.5 text-xs font-medium text-emerald-900 bg-emerald-100 hover:bg-emerald-200 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
+              className="px-3 py-1.5 text-xs font-medium text-emerald-900 bg-emerald-100 hover:bg-emerald-200 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Add</span>
@@ -840,10 +837,10 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
         </div>
 
         {formData.skills.length === 0 ? (
-          <div className="mt-5 p-4 border border-dashed border-amber-300 bg-amber-50/50 rounded-xl text-center">
-            <p className="text-xs font-semibold text-amber-900">No skills explicitly stated in CV</p>
-            <p className="text-[11px] text-amber-700 mt-1">
-              Please add at least one relevant skill (e.g. Customer Service, POS, SQL, Logistics) using the input above.
+          <div className="mt-5 p-4 border border-dashed border-stone-200 bg-stone-50/60 rounded-xl text-center">
+            <p className="text-xs text-stone-600 font-medium">No skills explicitly stated in CV.</p>
+            <p className="text-[11px] text-stone-400 mt-0.5">
+              You may optionally add skills or competencies above.
             </p>
           </div>
         ) : (

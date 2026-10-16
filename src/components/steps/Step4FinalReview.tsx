@@ -279,16 +279,20 @@ export const Step4FinalReview: React.FC<Step4FinalReviewProps> = ({
           </div>
 
           <div className="p-6">
-            <div className="flex flex-wrap gap-1.5">
-              {applicantData.skills.map((skill) => (
-                <span
-                  key={skill}
-                  className="px-2.5 py-1 text-xs rounded bg-stone-100 text-stone-800 border border-stone-200/70"
-                >
-                  {skill}
-                </span>
-              ))}
-            </div>
+            {applicantData.skills.length === 0 ? (
+              <p className="text-xs text-stone-500 italic">No skills explicitly stated (optional).</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {applicantData.skills.map((skill) => (
+                  <span
+                    key={skill}
+                    className="px-2.5 py-1 text-xs rounded bg-stone-100 text-stone-800 border border-stone-200/70"
+                  >
+                    {skill}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

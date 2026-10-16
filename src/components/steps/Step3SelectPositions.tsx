@@ -9,8 +9,6 @@ import {
   ArrowRight,
   ArrowLeft,
   Search,
-  Filter,
-  Info,
 } from 'lucide-react';
 import { JobPosition, ApplicantData } from '../../types/application';
 import { AVAILABLE_POSITIONS } from '../../data/positions';
@@ -31,33 +29,15 @@ export const Step3SelectPositions: React.FC<Step3SelectPositionsProps> = ({
   onBack,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedDeptFilter, setSelectedDeptFilter] = useState<string>('all');
   const [expandedPositionId, setExpandedPositionId] = useState<string | null>(null);
 
-  // Departments for filtering
-  const departments = ['all', ...Array.from(new Set(AVAILABLE_POSITIONS.map((p) => p.department)))];
-
   const filteredPositions = AVAILABLE_POSITIONS.filter((pos) => {
-    const matchesSearch =
+    return (
       pos.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       pos.department.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      pos.description.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesDept = selectedDeptFilter === 'all' || pos.department === selectedDeptFilter;
-    return matchesSearch && matchesDept;
-  });
-
-  // Calculate matching keywords (informational only - NO PERCENTAGES)
-  const getMatchingKeywords = (pos: JobPosition) => {
-    if (!applicantData.skills || applicantData.skills.length === 0) return [];
-    const applicantSkillsLower = applicantData.skills.map((s) => s.toLowerCase());
-    return pos.relevantSkills.filter((reqSkill) =>
-      applicantSkillsLower.some(
-        (candSkill) =>
-          candSkill.includes(reqSkill.toLowerCase()) ||
-          reqSkill.toLowerCase().includes(candSkill)
-      )
+      pos.description.toLowerCase().includes(searchTerm.toLowerCase())
     );
-  };
+  });
 
   const isSelected = (posId: string) => selectedPositions.some((p) => p.id === posId);
 
@@ -88,7 +68,7 @@ export const Step3SelectPositions: React.FC<Step3SelectPositionsProps> = ({
           </div>
         </div>
 
-        {/* Search & Filter Toolbar */}
+        {/* Search & Role View Toolbar */}
         <div className="mt-6 flex flex-col sm:flex-row items-center gap-3 pt-4 border-t border-stone-100">
           <div className="relative w-full sm:w-72">
             <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -101,34 +81,39 @@ export const Step3SelectPositions: React.FC<Step3SelectPositionsProps> = ({
             />
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
-            <Filter className="w-3.5 h-3.5 text-stone-400 shrink-0 hidden sm:block" />
-            <div className="flex items-center gap-1.5">
-              {departments.slice(0, 4).map((dept) => (
-                <button
-                  key={dept}
-                  type="button"
-                  onClick={() => setSelectedDeptFilter(dept)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap ${
-                    selectedDeptFilter === dept
-                      ? 'bg-stone-900 text-white'
-                      : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
-                  }`}
-                >
-                  {dept === 'all' ? 'All Roles (6)' : dept.split(' ')[0]}
-                </button>
-              ))}
-            </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => setSearchTerm('')}
+              className={`px-3 py-2 text-xs font-medium rounded transition-colors whitespace-nowrap cursor-pointer ${
+                searchTerm === ''
+                  ? 'bg-stone-900 text-white'
+                  : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+              }`}
+            >
+              All Roles ({AVAILABLE_POSITIONS.length})
+            </button>
           </div>
         </div>
       </div>
 
       {/* POSITIONS LIST */}
       <div className="space-y-4">
+        {filteredPositions.length === 0 && (
+          <div className="p-8 text-center bg-white rounded-xl border border-stone-200">
+            <p className="text-sm font-medium text-stone-700">No positions match your search &ldquo;{searchTerm}&rdquo;.</p>
+            <button
+              type="button"
+              onClick={() => setSearchTerm('')}
+              className="mt-3 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-800 text-white hover:bg-emerald-900 cursor-pointer"
+            >
+              Show All Roles ({AVAILABLE_POSITIONS.length})
+            </button>
+          </div>
+        )}
         {filteredPositions.map((position) => {
           const selected = isSelected(position.id);
           const isExpanded = expandedPositionId === position.id;
-          const matchingKeywords = getMatchingKeywords(position);
 
           return (
             <div
@@ -178,17 +163,6 @@ export const Step3SelectPositions: React.FC<Step3SelectPositionsProps> = ({
                         {position.description}
                       </p>
 
-                      {/* Informational Matching Keywords (explicitly stated not used to rank) */}
-                      {matchingKeywords.length > 0 && (
-                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                          <span className="text-[11px] text-stone-600 font-medium bg-stone-100 px-2.5 py-1 rounded border border-stone-200">
-                            Shared Keywords in CV: {matchingKeywords.join(', ')}
-                          </span>
-                          <span className="text-[10px] text-stone-400 italic">
-                            (Informational only — not used to rank or evaluate applicants)
-                          </span>
-                        </div>
-                      )}
                     </div>
                   </div>
 

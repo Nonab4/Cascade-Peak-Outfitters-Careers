@@ -68,7 +68,14 @@ async function extractTextFromBuffer(buffer: Buffer, mimeType: string, fileName:
 // POST /api/extract-resume
 app.post('/api/extract-resume', async (req, res) => {
   try {
-    const { resumeText, fileBase64, mimeType, fileName } = req.body;
+    const { resumeText, fileBase64, mimeType, fileName, simulate503 } = req.body;
+
+    if (simulate503 || req.query.simulate503 === 'true') {
+      return res.status(503).json({
+        error: 'AI resume extraction is temporarily unavailable due to high demand. Please try again.',
+        temporaryUnavailable: true,
+      });
+    }
 
     let extractedPlainText = resumeText || '';
     let buffer: Buffer | null = null;
@@ -104,7 +111,7 @@ The company receives about 4,800 applications per year and is testing this front
 CRITICAL INSTRUCTIONS:
 1. STRICT ACCURACY: Do NOT invent, assume, extrapolate, or hallucinate missing information.
 2. If any field (full name, email, phone number, location, education graduation year, skills) is not explicitly stated in the resume, leave it as an empty string ("") or empty array ([]).
-3. Identify all missing standard fields and list them explicitly in "missingFields" (e.g., "Full Name", "Email Address", "Phone Number", "Location", "Education", "Graduation Year", "Work Experience", "Skills").
+3. Identify all missing required fields and list them explicitly in "missingFields" (e.g., "Full Name", "Email Address", "Phone Number", "Location", "Education", "Graduation Year", "Work Experience").
 4. Normalize dates into readable standard formats (e.g. "Jun 2021 - Present" or "2019 - 2023").
 5. Do NOT include fictional company facts, salaries, or marketing claims.`;
 
@@ -201,6 +208,21 @@ CRITICAL INSTRUCTIONS:
     });
   } catch (error: any) {
     console.error('Error in /api/extract-resume:', error);
+
+    const errStr = String(error?.message || error?.statusText || '');
+    const isTemporaryUnavailable =
+      error?.status === 503 ||
+      error?.statusCode === 503 ||
+      error?.code === 503 ||
+      /503|unavailable|high[\s-]demand|overloaded|resource exhausted|rate limit|temporarily unavailable/i.test(errStr);
+
+    if (isTemporaryUnavailable) {
+      return res.status(503).json({
+        error: 'AI resume extraction is temporarily unavailable due to high demand. Please try again.',
+        temporaryUnavailable: true,
+      });
+    }
+
     return res.status(500).json({
       error: error.message || 'Failed to extract resume with AI.',
       fallbackNeeded: true,

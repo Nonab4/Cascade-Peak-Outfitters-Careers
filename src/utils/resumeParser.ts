@@ -47,8 +47,38 @@ export async function parseResumeWithAI(
       body: JSON.stringify({ resumeText, fileBase64, mimeType, fileName }),
     });
 
+    if (response.status === 503) {
+      const errData = await response.json().catch(() => ({}));
+      const error: any = new Error(
+        errData.error || 'AI resume extraction is temporarily unavailable due to high demand. Please try again.'
+      );
+      error.isTemporaryUnavailable = true;
+      throw error;
+    }
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      const errStr = String(errData.error || response.statusText || '');
+      if (/503|unavailable|high[\s-]demand|overloaded/i.test(errStr)) {
+        const error: any = new Error(
+          'AI resume extraction is temporarily unavailable due to high demand. Please try again.'
+        );
+        error.isTemporaryUnavailable = true;
+        throw error;
+      }
+    }
+
     if (response.ok) {
       const result = await response.json();
+
+      if (result.temporaryUnavailable) {
+        const error: any = new Error(
+          result.error || 'AI resume extraction is temporarily unavailable due to high demand. Please try again.'
+        );
+        error.isTemporaryUnavailable = true;
+        throw error;
+      }
+
       if (result.success && result.data) {
         const raw = result.data;
         const missingFields: string[] = [];
@@ -72,10 +102,6 @@ export async function parseResumeWithAI(
 
         if (!raw.workExperience || raw.workExperience.length === 0) {
           missingFields.push('Work Experience');
-        }
-
-        if (!raw.skills || raw.skills.length === 0) {
-          missingFields.push('Skills');
         }
 
         const education: EducationItem[] = (raw.education || []).map((e: any, idx: number) => ({
@@ -130,7 +156,14 @@ export async function parseResumeWithAI(
         };
       }
     }
-  } catch (err) {
+  } catch (err: any) {
+    if (
+      err?.isTemporaryUnavailable ||
+      /temporarily unavailable|high[\s-]demand|503/i.test(String(err?.message || ''))
+    ) {
+      // Strictly re-throw without generating fake or sample applicant data
+      throw err;
+    }
     console.warn('Backend AI extraction unavailable, using fallback parser:', err);
   }
 
@@ -281,7 +314,6 @@ export function fallbackHeuristicExtraction(
     missingFields.push('Graduation Year');
   }
   if (workExperience.length === 0) missingFields.push('Work Experience');
-  if (skills.length === 0) missingFields.push('Skills');
 
   // Summary
   const summaryMatch = text.match(/(?:SUMMARY|PROFESSIONAL SUMMARY|EXECUTIVE SUMMARY)[\s\S]*?(?=(?:EXPERIENCE|WORK|EDUCATION|SKILLS|$))/i);

@@ -73,6 +73,17 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
     });
   };
 
+  const handleRetryExtraction = () => {
+    if (uploadedFile) {
+      handleSelectedFile(uploadedFile);
+    } else if (activeTab === 'paste' && rawText.trim()) {
+      handlePasteExtract();
+    } else if (selectedSampleId) {
+      const sample = SAMPLE_RESUMES.find((s) => s.id === selectedSampleId);
+      if (sample) handleSampleSelect(sample);
+    }
+  };
+
   const handleSelectedFile = async (file: File) => {
     setUploadedFile(file);
     setExtractionError(null);
@@ -104,7 +115,15 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
       onDataExtracted(result.data);
     } catch (err: any) {
       console.error('File extraction error:', err);
-      setExtractionError('Could not read the uploaded document. Please upload a valid PDF, DOCX, or text file.');
+      const isUnavailable =
+        err?.isTemporaryUnavailable ||
+        /temporarily unavailable|high[\s-]demand|503/i.test(String(err?.message || ''));
+
+      if (isUnavailable) {
+        setExtractionError('AI resume extraction is temporarily unavailable due to high demand. Please try again.');
+      } else {
+        setExtractionError(err?.message || 'Could not read the uploaded document. Please upload a valid PDF, DOCX, or text file.');
+      }
     } finally {
       setIsExtracting(false);
       setExtractionProgress('');
@@ -127,8 +146,16 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
         fileSize: sample.rawText.length,
       });
       onDataExtracted(result.data);
-    } catch (err) {
-      setExtractionError('Extraction encountered an error with sample record.');
+    } catch (err: any) {
+      const isUnavailable =
+        err?.isTemporaryUnavailable ||
+        /temporarily unavailable|high[\s-]demand|503/i.test(String(err?.message || ''));
+
+      if (isUnavailable) {
+        setExtractionError('AI resume extraction is temporarily unavailable due to high demand. Please try again.');
+      } else {
+        setExtractionError('Extraction encountered an error with sample record.');
+      }
     } finally {
       setIsExtracting(false);
       setExtractionProgress('');
@@ -152,8 +179,16 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
         fileSize: rawText.length,
       });
       onDataExtracted(result.data);
-    } catch (err) {
-      setExtractionError('Extraction encountered an error with the pasted text.');
+    } catch (err: any) {
+      const isUnavailable =
+        err?.isTemporaryUnavailable ||
+        /temporarily unavailable|high[\s-]demand|503/i.test(String(err?.message || ''));
+
+      if (isUnavailable) {
+        setExtractionError('AI resume extraction is temporarily unavailable due to high demand. Please try again.');
+      } else {
+        setExtractionError('Extraction encountered an error with the pasted text.');
+      }
     } finally {
       setIsExtracting(false);
       setExtractionProgress('');
@@ -289,15 +324,16 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
                 </div>
 
                 <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleSelectedFile(uploadedFile);
                   }}
                   disabled={isExtracting}
-                  className="px-3 py-1.5 text-xs font-medium text-emerald-900 bg-emerald-200/80 hover:bg-emerald-300 rounded flex items-center gap-1.5 transition-colors"
+                  className="px-3 py-1.5 text-xs font-medium text-emerald-900 bg-emerald-200/80 hover:bg-emerald-300 rounded flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isExtracting ? 'animate-spin' : ''}`} />
-                  <span>Re-extract</span>
+                  <span>Retry Extraction</span>
                 </button>
               </div>
             )}
@@ -410,12 +446,26 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
 
         {/* Extraction error banner */}
         {extractionError && (
-          <div className="mt-6 p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-xs font-bold text-rose-900">Extraction Notice</p>
-              <p className="text-xs text-rose-700 mt-0.5">{extractionError}</p>
+          <div className="mt-6 p-4 bg-amber-50 border border-amber-300 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-bold text-amber-950">Extraction Notice</p>
+                <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">{extractionError}</p>
+              </div>
             </div>
+
+            {(uploadedFile || (activeTab === 'paste' && rawText.trim()) || selectedSampleId) && (
+              <button
+                type="button"
+                onClick={handleRetryExtraction}
+                disabled={isExtracting}
+                className="px-4 py-2 text-xs font-semibold text-white bg-emerald-800 hover:bg-emerald-900 rounded-lg shadow-xs transition-colors flex items-center justify-center gap-1.5 shrink-0 disabled:opacity-50 cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isExtracting ? 'animate-spin' : ''}`} />
+                <span>Retry Extraction</span>
+              </button>
+            )}
           </div>
         )}
       </div>

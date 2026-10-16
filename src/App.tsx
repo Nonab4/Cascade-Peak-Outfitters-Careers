@@ -6,12 +6,13 @@
 import React, { useState } from 'react';
 import { Header } from './components/Header';
 import { StepProgressBar } from './components/StepProgressBar';
-import { BusinessImpactBanner } from './components/BusinessImpactBanner';
 import { Step1UploadCV } from './components/steps/Step1UploadCV';
 import { Step2ReviewInfo } from './components/steps/Step2ReviewInfo';
 import { Step3SelectPositions } from './components/steps/Step3SelectPositions';
 import { Step4FinalReview } from './components/steps/Step4FinalReview';
 import { Step5Complete } from './components/steps/Step5Complete';
+import { AvailableRolesModal } from './components/AvailableRolesModal';
+import { PrototypeOverviewModal } from './components/PrototypeOverviewModal';
 import {
   ApplicantData,
   JobPosition,
@@ -23,7 +24,8 @@ import { Mountain, Compass, ShieldCheck, CheckCircle2 } from 'lucide-react';
 export default function App() {
   const [currentStep, setCurrentStep] = useState<ApplicationStep>(1);
   const [maxUnlockedStep, setMaxUnlockedStep] = useState<ApplicationStep>(1);
-  const [showGoalsBanner, setShowGoalsBanner] = useState(true);
+  const [isOverviewModalOpen, setIsOverviewModalOpen] = useState(false);
+  const [isRolesModalOpen, setIsRolesModalOpen] = useState(false);
 
   // Applicant Data State
   const [applicantData, setApplicantData] = useState<ApplicantData | null>(null);
@@ -119,14 +121,24 @@ export default function App() {
     <div className="min-h-screen bg-stone-100/70 text-stone-900 flex flex-col font-['DM_Sans',sans-serif]">
       {/* Top Header */}
       <Header
-        showGoalsBanner={showGoalsBanner}
-        onShowBusinessGoals={() => setShowGoalsBanner(!showGoalsBanner)}
+        onOpenOverviewModal={() => setIsOverviewModalOpen(true)}
+        onOpenRolesModal={() => setIsRolesModalOpen(true)}
       />
 
-      {/* Baseline Facts & Potential Value Banner */}
-      {showGoalsBanner && (
-        <BusinessImpactBanner onDismiss={() => setShowGoalsBanner(false)} />
-      )}
+      {/* Prototype Overview Modal (Houses case background, current operational baselines, potential value, and developer data preview) */}
+      <PrototypeOverviewModal
+        isOpen={isOverviewModalOpen}
+        onClose={() => setIsOverviewModalOpen(false)}
+        currentSubmission={submission}
+        applicantData={applicantData}
+        selectedPositions={selectedPositions}
+      />
+
+      {/* Read-Only Available Roles Modal */}
+      <AvailableRolesModal
+        isOpen={isRolesModalOpen}
+        onClose={() => setIsRolesModalOpen(false)}
+      />
 
       {/* Step Progress Indicator Bar */}
       <StepProgressBar
