@@ -35,144 +35,282 @@ export function isValidGraduationYear(year: string): boolean {
   return !isNaN(y) && /^\d{4}$/.test(year.trim()) && y >= 1960 && y <= 2035;
 }
 
+export function isLikelyUnrelatedDocument(text: string): boolean {
+  if (!text || text.trim().length < 50) return false;
+
+  // Academic paper / essay / report signals
+  const hasAcademicSignals =
+    /\b(abstract|methodology|literature review|references|bibliography|doi:|works cited|peer reviewed|in conclusion|submitted to the faculty of|course syllabus|research questions?)\b/i.test(
+      text
+    );
+
+  // Invoice / receipt / billing signals
+  const hasInvoiceSignals =
+    /\b(invoice\s*#|bill\s*to:|remit\s*payment|total\s*due:|unit\s*price|subtotal\s*[$€£]|net\s*30\s*days|payment\s*terms|invoice date)\b/i.test(
+      text
+    );
+
+  // Class assignment / homework signals
+  const hasAssignmentSignals =
+    /\b(assignment\s*#|homework\s*#|essay\s*prompt|grading\s*rubric|course\s*syllabus|problem\s*set)\b/i.test(
+      text
+    );
+
+  // Resume / CV content signals:
+  // (contact information, education, work or volunteer experience, skills, qualifications, professional summary, employment history)
+  const hasResumeSignals =
+    /\b(work experience|employment history|professional experience|career history|education|bachelor|master|degree|skills|curriculum vitae|resume|certifications|responsibilities|job title|volunteer experience)\b/i.test(
+      text
+    );
+
+  if ((hasAcademicSignals || hasInvoiceSignals || hasAssignmentSignals) && !hasResumeSignals) {
+    return true;
+  }
+
+  return false;
+}
+
+export type ParseResumeResult =
+  | { success: true; data: ApplicantData; usedAI: boolean; notes?: string }
+  | { success: false; temporaryUnavailable: true; message: string; isInvalidDocumentType?: false }
+  | { success: false; isInvalidDocumentType: true; message: string; temporaryUnavailable?: false };
+
 export async function parseResumeWithAI(
   options: ParseResumeOptions
-): Promise<{ data: ApplicantData; usedAI: boolean; notes?: string }> {
+): Promise<ParseResumeResult> {
   const { resumeText = '', fileBase64, mimeType, fileName = 'resume.txt', fileSize } = options;
 
+  if (resumeText && isLikelyUnrelatedDocument(resumeText)) {
+    return {
+      success: false,
+      isInvalidDocumentType: true,
+      message:
+        'This document does not appear to be a resume or CV. Please choose a different file or enter your information manually.',
+    };
+  }
+
+  let response: Response;
   try {
-    const response = await fetch('/api/extract-resume', {
+    response = await fetch('/api/extract-resume', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ resumeText, fileBase64, mimeType, fileName }),
     });
-
-    if (response.status === 503) {
-      const errData = await response.json().catch(() => ({}));
-      const error: any = new Error(
-        errData.error || 'AI resume extraction is temporarily unavailable due to high demand. Please try again.'
-      );
-      error.isTemporaryUnavailable = true;
-      throw error;
-    }
-
-    if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
-      const errStr = String(errData.error || response.statusText || '');
-      if (/503|unavailable|high[\s-]demand|overloaded/i.test(errStr)) {
-        const error: any = new Error(
-          'AI resume extraction is temporarily unavailable due to high demand. Please try again.'
-        );
-        error.isTemporaryUnavailable = true;
-        throw error;
-      }
-    }
-
-    if (response.ok) {
-      const result = await response.json();
-
-      if (result.temporaryUnavailable) {
-        const error: any = new Error(
-          result.error || 'AI resume extraction is temporarily unavailable due to high demand. Please try again.'
-        );
-        error.isTemporaryUnavailable = true;
-        throw error;
-      }
-
-      if (result.success && result.data) {
-        const raw = result.data;
-        const missingFields: string[] = [];
-
-        // Validate presence of core fields and ensure missingFields list is strictly accurate
-        if (!raw.fullName || !raw.fullName.trim()) missingFields.push('Full Name');
-        if (!raw.email || !raw.email.trim() || !isValidEmailAddress(raw.email)) missingFields.push('Email Address');
-        if (!raw.phone || !raw.phone.trim() || !isValidPhoneNumber(raw.phone)) missingFields.push('Phone Number');
-        if (!raw.location || !raw.location.trim()) missingFields.push('Location');
-        
-        if (!raw.education || raw.education.length === 0) {
-          missingFields.push('Education History');
-        } else {
-          const hasMissingGradYear = raw.education.some(
-            (e: any) => !e.graduationYear || !isValidGraduationYear(e.graduationYear)
-          );
-          if (hasMissingGradYear) {
-            missingFields.push('Graduation Year');
-          }
-        }
-
-        if (!raw.workExperience || raw.workExperience.length === 0) {
-          missingFields.push('Work Experience');
-        }
-
-        const education: EducationItem[] = (raw.education || []).map((e: any, idx: number) => ({
-          id: `edu-${Date.now()}-${idx}`,
-          institution: e.institution || '',
-          degree: e.degree || '',
-          fieldOfStudy: e.fieldOfStudy || '',
-          graduationYear: e.graduationYear && /^\d{4}$/.test(e.graduationYear) ? e.graduationYear : '',
-          details: e.details || '',
-          isExtracted: true,
-        }));
-
-        const workExperience: WorkExperienceItem[] = (raw.workExperience || []).map((w: any, idx: number) => ({
-          id: `work-${Date.now()}-${idx}`,
-          company: w.company || '',
-          title: w.title || '',
-          startDate: w.startDate || '',
-          endDate: w.endDate || '',
-          current: Boolean(w.current),
-          description: w.description || '',
-          isExtracted: true,
-        }));
-
-        const formattedPhone = raw.phone ? standardizePhoneNumber(raw.phone) : '';
-
-        return {
-          usedAI: true,
-          notes: raw.extractionConfidenceNotes || 'Information extracted using Gemini 3.8 Flash model.',
-          data: {
-            fullName: raw.fullName || '',
-            email: raw.email || '',
-            phone: formattedPhone,
-            location: raw.location || '',
-            summary: raw.summary || '',
-            education,
-            workExperience,
-            skills: raw.skills || [],
-            missingFields,
-            rawText: result.extractedText || resumeText,
-            fileName,
-            fileSize,
-            extractedAt: new Date().toISOString(),
-            extractionConfidenceNotes: raw.extractionConfidenceNotes,
-          },
-        };
-      } else if (result.fallbackNeeded && result.extractedText) {
-        const fallbackData = fallbackHeuristicExtraction(result.extractedText, fileName, fileSize);
-        return {
-          data: fallbackData,
-          usedAI: false,
-          notes: 'Parsed via structured recruitment intake rules.',
-        };
-      }
-    }
-  } catch (err: any) {
-    if (
-      err?.isTemporaryUnavailable ||
-      /temporarily unavailable|high[\s-]demand|503/i.test(String(err?.message || ''))
-    ) {
-      // Strictly re-throw without generating fake or sample applicant data
-      throw err;
-    }
-    console.warn('Backend AI extraction unavailable, using fallback parser:', err);
+  } catch (_netErr: any) {
+    // Treat expected temporary service outage as recoverable status condition (no throw)
+    return {
+      success: false,
+      temporaryUnavailable: true,
+      message:
+        'AI resume extraction is temporarily unavailable. Your document has not been processed yet.',
+    };
   }
 
-  // Fallback heuristic extraction
-  const fallbackData = fallbackHeuristicExtraction(resumeText, fileName, fileSize);
+  if (response.status === 422) {
+    const errData = await response.json().catch(() => ({}));
+    return {
+      success: false,
+      isInvalidDocumentType: true,
+      message:
+        errData.error ||
+        'This document does not appear to be a resume or CV. Please choose a different file or enter your information manually.',
+    };
+  }
+
+  if (response.status === 503) {
+    const errData = await response.json().catch(() => ({}));
+    if (errData.isInvalidDocumentType) {
+      return {
+        success: false,
+        isInvalidDocumentType: true,
+        message:
+          errData.error ||
+          'This document does not appear to be a resume or CV. Please choose a different file or enter your information manually.',
+      };
+    }
+    return {
+      success: false,
+      temporaryUnavailable: true,
+      message:
+        errData.error ||
+        'AI resume extraction is temporarily unavailable. Your document has not been processed yet.',
+    };
+  }
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    const errStr = String(errData.error || errData.message || '');
+    const isTemp =
+      errData.temporaryUnavailable ||
+      /503|unavailable|high[\s-]demand|overloaded|resource exhausted|rate limit|temporarily unavailable/i.test(errStr);
+
+    if (errData.isInvalidDocumentType) {
+      return {
+        success: false,
+        isInvalidDocumentType: true,
+        message:
+          errData.error ||
+          'This document does not appear to be a resume or CV. Please choose a different file or enter your information manually.',
+      };
+    }
+
+    if (isTemp) {
+      return {
+        success: false,
+        temporaryUnavailable: true,
+        message:
+          errData.error ||
+          'AI resume extraction is temporarily unavailable. Your document has not been processed yet.',
+      };
+    }
+
+    // Unexpected server status should throw as normal programming error
+    throw new Error(`Unexpected server response ${response.status}: ${errStr}`);
+  }
+
+  const result = await response.json().catch(() => ({}));
+
+  if (result.isInvalidDocumentType) {
+    return {
+      success: false,
+      isInvalidDocumentType: true,
+      message:
+        result.error ||
+        'This document does not appear to be a resume or CV. Please choose a different file or enter your information manually.',
+    };
+  }
+
+  if (result.temporaryUnavailable || !result.success || !result.data) {
+    return {
+      success: false,
+      temporaryUnavailable: true,
+      message:
+        result.error ||
+        'AI resume extraction is temporarily unavailable. Your document has not been processed yet.',
+    };
+  }
+
+  const raw = result.data;
+  const missingFields: string[] = [];
+
+  // Check required personal fields
+  if (!raw.fullName || !raw.fullName.trim() || /organization|company|resume|curriculum/i.test(raw.fullName)) {
+    raw.fullName = '';
+    missingFields.push('Full Name');
+  }
+  if (!raw.email || !raw.email.trim() || !isValidEmailAddress(raw.email)) {
+    raw.email = '';
+    missingFields.push('Email Address');
+  }
+  if (!raw.phone || !raw.phone.trim() || !isValidPhoneNumber(raw.phone)) {
+    raw.phone = '';
+    missingFields.push('Phone Number');
+  }
+  if (!raw.location || !raw.location.trim()) {
+    raw.location = '';
+    missingFields.push('Location');
+  }
+
+  // Filter out any placeholder records or section headings from education
+  const rawEducation = Array.isArray(raw.education) ? raw.education : [];
+  const cleanEducation: EducationItem[] = rawEducation
+    .filter((e: any) => {
+      if (!e) return false;
+      const inst = String(e.institution || '').trim();
+      const deg = String(e.degree || '').trim();
+      if (!inst && !deg) return false;
+      // Reject placeholders
+      if (/higher education|institution placeholder|university \/ college|unknown/i.test(inst)) return false;
+      if (/degree completed|degree placeholder|unknown/i.test(deg)) return false;
+      if (/^(education|academic background|experience|work|skills)$/i.test(inst)) return false;
+      if (/^(education|academic background|experience|work|skills)$/i.test(deg)) return false;
+      return true;
+    })
+    .map((e: any, idx: number) => {
+      const gradYear =
+        e.graduationYear && /^\d{4}$/.test(String(e.graduationYear).trim())
+          ? String(e.graduationYear).trim()
+          : '';
+      return {
+        id: `edu-${Date.now()}-${idx}`,
+        institution: String(e.institution || '').trim(),
+        degree: String(e.degree || '').trim(),
+        fieldOfStudy: String(e.fieldOfStudy || '').trim(),
+        graduationYear: gradYear,
+        details: String(e.details || '').trim(),
+        isExtracted: true,
+      };
+    });
+
+  if (cleanEducation.length === 0) {
+    missingFields.push('Education History');
+  } else {
+    const hasMissingGradYear = cleanEducation.some(
+      (e) => !e.graduationYear || !isValidGraduationYear(e.graduationYear)
+    );
+    if (hasMissingGradYear) {
+      missingFields.push('Graduation Year');
+    }
+  }
+
+  // Filter out any placeholder records or section headings from work experience
+  const rawWork = Array.isArray(raw.workExperience) ? raw.workExperience : [];
+  const cleanWorkExperience: WorkExperienceItem[] = rawWork
+    .filter((w: any) => {
+      if (!w) return false;
+      const comp = String(w.company || '').trim();
+      const ttl = String(w.title || '').trim();
+      if (!comp && !ttl) return false;
+      // Reject placeholders
+      if (/organization\s*\/\s*company|company placeholder|unknown organization|n\/a/i.test(comp)) return false;
+      if (/job title placeholder|section heading|unknown title/i.test(ttl)) return false;
+      if (/^(work experience|experience|employment history|education|skills|summary|projects|volunteer)$/i.test(ttl)) return false;
+      if (/^(work experience|experience|employment history|education|skills|summary|projects|volunteer)$/i.test(comp)) return false;
+      // Reject sentences masquerading as job titles
+      if (ttl.length > 80 || ttl.split(' ').length > 12) return false;
+      return true;
+    })
+    .map((w: any, idx: number) => ({
+      id: `work-${Date.now()}-${idx}`,
+      company: String(w.company || '').trim(),
+      title: String(w.title || '').trim(),
+      startDate: String(w.startDate || '').trim(),
+      endDate: String(w.endDate || '').trim(),
+      current: Boolean(w.current),
+      description: String(w.description || '').trim(),
+      isExtracted: true,
+    }));
+
+  // Note: Work Experience is optional. Missing work experience is NOT added to missingFields.
+
+  // Skills: Filter out non-skills, keep optional (do NOT add to missingFields)
+  const rawSkills = Array.isArray(raw.skills) ? raw.skills : [];
+  const cleanSkills = rawSkills
+    .map((s: any) => String(s || '').trim())
+    .filter((s: string) => s.length > 1 && s.length < 50 && !/^(skills|competencies|experience|summary|none)$/i.test(s));
+
+  const formattedPhone = raw.phone ? standardizePhoneNumber(raw.phone) : '';
+
   return {
-    data: fallbackData,
-    usedAI: false,
-    notes: 'Parsed via structured recruitment intake rules.',
+    success: true,
+    usedAI: true,
+    notes: raw.extractionConfidenceNotes || 'Information extracted using Gemini 3.8 Flash model.',
+    data: {
+      fullName: raw.fullName || '',
+      email: raw.email || '',
+      phone: formattedPhone,
+      location: raw.location || '',
+      summary: raw.summary || '',
+      education: cleanEducation,
+      workExperience: cleanWorkExperience,
+      skills: Array.from(new Set(cleanSkills)),
+      missingFields,
+      rawText: result.extractedText || resumeText,
+      fileName,
+      fileSize,
+      extractedAt: new Date().toISOString(),
+      extractionConfidenceNotes: raw.extractionConfidenceNotes,
+    },
   };
 }
 
@@ -181,6 +319,14 @@ export function fallbackHeuristicExtraction(
   fileName: string = 'uploaded_resume.txt',
   fileSize?: number
 ): ApplicantData {
+  if (isLikelyUnrelatedDocument(text)) {
+    const error: any = new Error(
+      'This document does not appear to be a resume or CV. Please choose a different file or enter your information manually.'
+    );
+    error.isInvalidDocumentType = true;
+    throw error;
+  }
+
   const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
 
   let fullName = '';
@@ -200,58 +346,61 @@ export function fallbackHeuristicExtraction(
     phone = standardizePhoneNumber(phoneMatch[0]);
   }
 
-  // 3. Name (usually top lines before email/phone)
+  // 3. Name (only top lines before email/phone)
   for (let i = 0; i < Math.min(lines.length, 4); i++) {
     const line = lines[i];
     if (
       line.length > 2 &&
-      line.length < 40 &&
+      line.length < 35 &&
       !line.includes('@') &&
       !line.match(/[0-9]{4}/) &&
-      !line.toLowerCase().includes('resume') &&
-      !line.toLowerCase().includes('curriculum') &&
-      !line.toLowerCase().includes('page')
+      !/^(resume|curriculum|vitae|page|contact|email|phone)/i.test(line)
     ) {
-      fullName = line.replace(/^(name\s*:\s*)/i, '');
+      fullName = line.replace(/^(name\s*:\s*)/i, '').trim();
       break;
     }
   }
 
   // 4. Location
-  const locationMatch = text.match(/(?:Location|Address)?\s*:\s*([A-Za-z\s]+,\s*[A-Z]{2})/i) ||
-                        text.match(/([A-Z][a-zA-Z\s]+,\s*(?:WA|OR|CA|ID|MT|CO|UT|BC|Washington|Oregon|California))/i);
+  const locationMatch =
+    text.match(/(?:Location|Address)?\s*:\s*([A-Za-z\s]+,\s*[A-Z]{2})/i) ||
+    text.match(/([A-Z][a-zA-Z\s]+,\s*(?:WA|OR|CA|ID|MT|CO|UT|BC|Washington|Oregon|California))/i);
   if (locationMatch) {
     location = locationMatch[1].trim();
   }
 
-  // 5. Skills
+  // 5. Skills (optional)
   const skills: string[] = [];
-  const skillsRegex = /(?:SKILLS|COMPETENCIES|CORE SKILLS|TECHNICAL SKILLS)[\s\S]*?(?=(?:EXPERIENCE|WORK|EDUCATION|PROJECTS|CERTIFICATIONS|$))/i;
+  const skillsRegex =
+    /(?:SKILLS|COMPETENCIES|CORE SKILLS|TECHNICAL SKILLS)[\s\S]*?(?=(?:EXPERIENCE|WORK|EDUCATION|PROJECTS|CERTIFICATIONS|$))/i;
   const skillsBlock = text.match(skillsRegex);
   if (skillsBlock) {
     const rawTokens = skillsBlock[0]
       .replace(/(?:SKILLS|COMPETENCIES|CORE SKILLS|TECHNICAL SKILLS)[:\s]*/i, '')
       .split(/[,•·\n\r|;]+/)
       .map((s) => s.trim().replace(/^[-*•]\s*/, ''))
-      .filter((s) => s.length > 1 && s.length < 45 && !s.toLowerCase().includes('experience'));
+      .filter((s) => s.length > 1 && s.length < 45 && !/^(experience|education|work|skills)$/i.test(s));
     skills.push(...Array.from(new Set(rawTokens)));
   }
 
-  // 6. Education
+  // 6. Education - ONLY genuine identified records, NO placeholders
   const education: EducationItem[] = [];
   const eduRegex = /(?:EDUCATION|ACADEMIC BACKGROUND)[\s\S]*?(?=(?:EXPERIENCE|WORK|SKILLS|PROJECTS|$))/i;
   const eduBlock = text.match(eduRegex);
   if (eduBlock) {
     const eduText = eduBlock[0];
     const uniMatch = eduText.match(/([A-Za-z\s]+(?:University|College|Institute|Academy)[A-Za-z\s,]*)/i);
-    const degreeMatch = eduText.match(/(Bachelor[^\n,]+|Master[^\n,]+|Associate[^\n,]+|B\.?[AS]\.?[^\n,]*|M\.?[AS]\.?[^\n,]*|Ph\.?D[^\n,]*)/i);
+    const degreeMatch = eduText.match(
+      /(Bachelor[^\n,]+|Master[^\n,]+|Associate[^\n,]+|B\.?[AS]\.?[^\n,]*|M\.?[AS]\.?[^\n,]*|Ph\.?D[^\n,]*)/i
+    );
     const yearMatch = eduText.match(/\b(20\d\d|19\d\d)\b/);
 
+    // Only create an entry if an institution OR degree was genuinely identified (no "Higher Education Institution")
     if (uniMatch || degreeMatch) {
       education.push({
         id: `edu-${Date.now()}-1`,
-        institution: uniMatch ? uniMatch[1].trim() : 'Higher Education Institution',
-        degree: degreeMatch ? degreeMatch[1].trim() : 'Degree Completed',
+        institution: uniMatch ? uniMatch[1].trim() : '',
+        degree: degreeMatch ? degreeMatch[1].trim() : '',
         fieldOfStudy: '',
         graduationYear: yearMatch && isValidGraduationYear(yearMatch[1]) ? yearMatch[1].trim() : '',
         details: '',
@@ -260,7 +409,7 @@ export function fallbackHeuristicExtraction(
     }
   }
 
-  // 7. Work Experience
+  // 7. Work Experience - ONLY genuine identified records, NO placeholders
   const workExperience: WorkExperienceItem[] = [];
   const expRegex = /(?:EXPERIENCE|WORK EXPERIENCE|EMPLOYMENT HISTORY)[\s\S]*?(?=(?:EDUCATION|SKILLS|CERTIFICATIONS|$))/i;
   const expBlock = text.match(expRegex);
@@ -271,8 +420,14 @@ export function fallbackHeuristicExtraction(
       if (chunk.trim().length > 25 && idx < 3) {
         const chunkLines = chunk.split('\n').map((c) => c.trim()).filter(Boolean);
         const header = chunkLines[0] || '';
-        let title = header;
-        let company = 'Organization / Company';
+        
+        // Skip if header is a section title or summary sentence
+        if (/^(EXPERIENCE|WORK|SKILLS|EDUCATION|SUMMARY|PROJECTS|CERTIFICATIONS|REFERENCES|VOLUNTEER)/i.test(header)) {
+          return;
+        }
+
+        let title = '';
+        let company = '';
         if (header.includes('|')) {
           const parts = header.split('|');
           title = parts[0].trim();
@@ -281,23 +436,34 @@ export function fallbackHeuristicExtraction(
           const parts = header.split(' at ');
           title = parts[0].trim();
           company = parts[1].trim();
-        } else if (chunkLines[1] && chunkLines[1].length < 50) {
+        } else if (chunkLines[1] && chunkLines[1].length < 45 && !/^(Seattle|Portland|Remote|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{4})/i.test(chunkLines[1])) {
+          title = header;
           company = chunkLines[1];
         }
 
-        const dateMatch = chunk.match(/(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+)?\d{4}\s*(?:-|–|to)\s*(?:Present|(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+)?\d{4})/i);
-        const desc = chunkLines.slice(1).join('\n');
+        // Clean out any placeholder strings
+        if (/organization|company placeholder/i.test(company)) {
+          company = '';
+        }
 
-        workExperience.push({
-          id: `work-${Date.now()}-${idx}`,
-          company: company.replace(/^[-\s|]+/, ''),
-          title: title.replace(/^[-\s|]+/, ''),
-          startDate: dateMatch ? dateMatch[0].split(/-|–|to/)[0].trim() : '',
-          endDate: dateMatch ? dateMatch[0].split(/-|–|to/)[1]?.trim() || '' : '',
-          current: dateMatch ? /present/i.test(dateMatch[0]) : false,
-          description: desc,
-          isExtracted: true,
-        });
+        // Only create record if title or company is genuinely identified
+        if (title.trim() && !/summary|objective|curriculum|resume|page/i.test(title)) {
+          const dateMatch = chunk.match(
+            /(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+)?\d{4}\s*(?:-|–|to)\s*(?:Present|(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+)?\d{4})/i
+          );
+          const desc = chunkLines.slice(1).filter((l) => l !== company).join('\n');
+
+          workExperience.push({
+            id: `work-${Date.now()}-${idx}`,
+            company: company.replace(/^[-\s|]+/, ''),
+            title: title.replace(/^[-\s|]+/, ''),
+            startDate: dateMatch ? dateMatch[0].split(/-|–|to/)[0].trim() : '',
+            endDate: dateMatch ? dateMatch[0].split(/-|–|to/)[1]?.trim() || '' : '',
+            current: dateMatch ? /present/i.test(dateMatch[0]) : false,
+            description: desc,
+            isExtracted: true,
+          });
+        }
       }
     });
   }
@@ -313,12 +479,17 @@ export function fallbackHeuristicExtraction(
   } else if (!education[0].graduationYear || !isValidGraduationYear(education[0].graduationYear)) {
     missingFields.push('Graduation Year');
   }
-  if (workExperience.length === 0) missingFields.push('Work Experience');
+  // Note: Work Experience is optional; missing work experience is not added to missingFields.
 
   // Summary
-  const summaryMatch = text.match(/(?:SUMMARY|PROFESSIONAL SUMMARY|EXECUTIVE SUMMARY)[\s\S]*?(?=(?:EXPERIENCE|WORK|EDUCATION|SKILLS|$))/i);
+  const summaryMatch = text.match(
+    /(?:SUMMARY|PROFESSIONAL SUMMARY|EXECUTIVE SUMMARY)[\s\S]*?(?=(?:EXPERIENCE|WORK|EDUCATION|SKILLS|$))/i
+  );
   const summary = summaryMatch
-    ? summaryMatch[0].replace(/(?:SUMMARY|PROFESSIONAL SUMMARY|EXECUTIVE SUMMARY)[:\s]*/i, '').trim().slice(0, 300)
+    ? summaryMatch[0]
+        .replace(/(?:SUMMARY|PROFESSIONAL SUMMARY|EXECUTIVE SUMMARY)[:\s]*/i, '')
+        .trim()
+        .slice(0, 300)
     : '';
 
   return {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   AlertCircle,
   Plus,
@@ -41,6 +41,10 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
   onBack,
 }) => {
   const [formData, setFormData] = useState<ApplicantData>({ ...data });
+
+  useEffect(() => {
+    setFormData({ ...data });
+  }, [data]);
   const [newSkillInput, setNewSkillInput] = useState('');
   const [showAddEdu, setShowAddEdu] = useState(false);
   const [showAddWork, setShowAddWork] = useState(false);
@@ -85,7 +89,7 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
 
   const hasWorkExperience = formData.workExperience.length > 0;
   const areAllWorkItemsValid =
-    hasWorkExperience &&
+    !hasWorkExperience ||
     formData.workExperience.every((w) => Boolean(w.title.trim() && w.company.trim()));
 
   const hasSkills = formData.skills.length > 0;
@@ -114,8 +118,9 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
       validationErrors.push('Each education record requires a valid 4-digit Graduation Year (e.g., 2022).');
     }
   }
-  if (!hasWorkExperience || !areAllWorkItemsValid) {
-    validationErrors.push('At least one Work Experience record with Job Title and Company is required.');
+  // Work experience is optional: missing work experience must not count as a validation error
+  if (hasWorkExperience && !areAllWorkItemsValid) {
+    validationErrors.push('Each added work experience record must have a Job Title and Company.');
   }
 
   const isFormValid = validationErrors.length === 0;
@@ -241,19 +246,20 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
               Review Applicant Information
             </h2>
             <p className="text-stone-600 text-sm mt-1 max-w-2xl">
-              Extracted fields from your CV are populated below. To support data quality and eliminate incomplete applications, all required fields and formats must be validated before continuing.
+              Extracted fields from your CV are populated below. To support data quality and reduce incomplete applications, all required fields and formats must be validated before continuing.
             </p>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs text-stone-500 font-mono">
-              Source: {formData.fileName || 'Uploaded CV'}
+            <span className="text-xs text-stone-700 bg-stone-100 px-3 py-1.5 rounded-lg border border-stone-200 font-mono flex items-center gap-1.5">
+              <span className="text-stone-400">Document:</span>
+              <span className="font-semibold text-stone-800">{formData.fileName || 'Uploaded CV'}</span>
             </span>
           </div>
         </div>
 
         {/* Validation Summary Callout if missing fields or errors exist */}
-        {validationErrors.length > 0 ? (
+        {!isFormValid || validationErrors.length > 0 ? (
           <div className="mt-6 p-5 bg-amber-50/90 border border-amber-300 rounded-xl">
             <div className="flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
@@ -267,7 +273,7 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-amber-800 mt-1">
-                  The following items are missing from your uploaded CV or require formatting corrections:
+                  The following required items must be entered or corrected before proceeding:
                 </p>
                 <ul className="mt-2.5 space-y-1.5 text-xs text-amber-900">
                   {validationErrors.map((err, idx) => (
@@ -637,10 +643,10 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
           <div>
             <h3 className="text-base font-bold text-stone-900 font-['Plus_Jakarta_Sans'] flex items-center gap-2">
               <Briefcase className="w-4 h-4 text-emerald-800" />
-              <span>Work Experience <span className="text-rose-600">*</span></span>
+              <span>Work Experience</span>
             </h3>
             <p className="text-xs text-stone-500 mt-0.5">
-              Positions extracted from your CV. At least one employment record is required.
+              Positions extracted from your CV. Optional section — add or edit employment records voluntarily.
             </p>
           </div>
 
@@ -655,10 +661,10 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
         </div>
 
         {formData.workExperience.length === 0 && !showAddWork && (
-          <div className="mt-5 p-4 border border-dashed border-amber-300 bg-amber-50/50 rounded-xl text-center">
-            <p className="text-xs font-semibold text-amber-900">No work experience was detected on your CV</p>
-            <p className="text-[11px] text-amber-700 mt-1">
-              At least one position is required. Click "Add Position" above to add your employment history.
+          <div className="mt-5 p-4 border border-dashed border-stone-300 bg-stone-50 rounded-xl text-center">
+            <p className="text-xs font-semibold text-stone-800">No work experience explicitly stated in CV.</p>
+            <p className="text-[11px] text-stone-500 mt-1">
+              Work experience is optional. You may click "Add Position" above to add employment records voluntarily.
             </p>
           </div>
         )}

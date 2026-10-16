@@ -206,22 +206,26 @@ export const Step4FinalReview: React.FC<Step4FinalReviewProps> = ({
         </div>
 
         <div className="p-6 space-y-4">
-          {applicantData.workExperience.map((work) => (
-            <div key={work.id} className="pb-4 last:pb-0 border-b last:border-0 border-stone-100">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between">
-                <h4 className="text-sm font-bold text-stone-900">{work.title}</h4>
-                <span className="text-xs font-mono text-stone-500">
-                  {work.startDate} {work.startDate && (work.endDate || 'Present') ? '—' : ''} {work.endDate || (work.current ? 'Present' : '')}
-                </span>
+          {applicantData.workExperience.length === 0 ? (
+            <p className="text-xs text-stone-500 italic">No work experience explicitly stated in CV.</p>
+          ) : (
+            applicantData.workExperience.map((work) => (
+              <div key={work.id} className="pb-4 last:pb-0 border-b last:border-0 border-stone-100">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between">
+                  <h4 className="text-sm font-bold text-stone-900">{work.title}</h4>
+                  <span className="text-xs font-mono text-stone-500">
+                    {work.startDate} {work.startDate && (work.endDate || 'Present') ? '—' : ''} {work.endDate || (work.current ? 'Present' : '')}
+                  </span>
+                </div>
+                <p className="text-xs font-medium text-emerald-800">{work.company}</p>
+                {work.description && (
+                  <p className="text-xs text-stone-600 mt-1.5 whitespace-pre-line leading-relaxed">
+                    {work.description}
+                  </p>
+                )}
               </div>
-              <p className="text-xs font-medium text-emerald-800">{work.company}</p>
-              {work.description && (
-                <p className="text-xs text-stone-600 mt-1.5 whitespace-pre-line leading-relaxed">
-                  {work.description}
-                </p>
-              )}
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
 

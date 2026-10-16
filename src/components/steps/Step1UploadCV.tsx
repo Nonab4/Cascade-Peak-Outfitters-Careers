@@ -10,6 +10,7 @@ import {
   FileCode,
   ShieldCheck,
   Zap,
+  Edit3,
 } from 'lucide-react';
 import { ApplicantData } from '../../types/application';
 import { SAMPLE_RESUMES, SampleResume } from '../../data/sampleResumes';
@@ -31,6 +32,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionProgress, setExtractionProgress] = useState<string>('');
   const [extractionError, setExtractionError] = useState<string | null>(null);
+  const [isInvalidDoc, setIsInvalidDoc] = useState(false);
   const [selectedSampleId, setSelectedSampleId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -73,6 +75,52 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
     });
   };
 
+  const handleChooseDifferentFile = () => {
+    setUploadedFile(null);
+    setRawText('');
+    setSelectedSampleId(null);
+    setExtractionError(null);
+    setIsInvalidDoc(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleEnterManually = () => {
+    const fallbackFileName =
+      uploadedFile?.name ||
+      (activeTab === 'paste'
+        ? 'pasted_resume.txt'
+        : selectedSampleId
+        ? `${selectedSampleId}_resume.txt`
+        : 'Uploaded Document');
+
+    const blankData: ApplicantData = {
+      fullName: '',
+      email: '',
+      phone: '',
+      location: '',
+      summary: '',
+      education: [],
+      workExperience: [],
+      skills: [],
+      missingFields: [
+        'Full Name',
+        'Email Address',
+        'Phone Number',
+        'Location',
+        'Education History',
+      ],
+      rawText: rawText || '',
+      fileName: fallbackFileName,
+      fileSize: uploadedFile?.size,
+      extractedAt: new Date().toISOString(),
+      extractionConfidenceNotes: 'Manual applicant entry. Fill in required fields to proceed.',
+    };
+    onDataExtracted(blankData);
+  };
+
   const handleRetryExtraction = () => {
     if (uploadedFile) {
       handleSelectedFile(uploadedFile);
@@ -87,6 +135,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
   const handleSelectedFile = async (file: File) => {
     setUploadedFile(file);
     setExtractionError(null);
+    setIsInvalidDoc(false);
     setSelectedSampleId(null);
 
     try {
@@ -109,21 +158,29 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
         resumeText: plainText,
       });
 
+      if (!result.success) {
+        if (result.isInvalidDocumentType) {
+          setIsInvalidDoc(true);
+          setExtractionError(result.message);
+        } else {
+          // Recoverable temporary outage: keep uploaded file loaded, do not throw or log console.error
+          setIsInvalidDoc(false);
+          setExtractionError(result.message);
+        }
+        return;
+      }
+
       setExtractionProgress('Validating fields and flagging missing data...');
       await new Promise((r) => setTimeout(r, 350));
 
       onDataExtracted(result.data);
     } catch (err: any) {
-      console.error('File extraction error:', err);
-      const isUnavailable =
-        err?.isTemporaryUnavailable ||
-        /temporarily unavailable|high[\s-]demand|503/i.test(String(err?.message || ''));
-
-      if (isUnavailable) {
-        setExtractionError('AI resume extraction is temporarily unavailable due to high demand. Please try again.');
-      } else {
-        setExtractionError(err?.message || 'Could not read the uploaded document. Please upload a valid PDF, DOCX, or text file.');
-      }
+      // Unexpected programming errors should still be logged normally
+      console.error('Unexpected error during file extraction:', err);
+      setIsInvalidDoc(false);
+      setExtractionError(
+        'AI resume extraction is temporarily unavailable. Your document has not been processed yet.'
+      );
     } finally {
       setIsExtracting(false);
       setExtractionProgress('');
@@ -133,29 +190,29 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
   const handleSampleSelect = async (sample: SampleResume) => {
     setSelectedSampleId(sample.id);
     setRawText(sample.rawText);
-    setUploadedFile(new File([sample.rawText], `${sample.applicantName.toLowerCase().replace(/\s+/g, '_')}_cv.txt`, { type: 'text/plain' }));
-    
+    const fileName = `${sample.applicantName.toLowerCase().replace(/\s+/g, '_')}_cv.txt`;
+    setUploadedFile(
+      new File([sample.rawText], fileName, {
+        type: 'text/plain',
+      })
+    );
+
     setIsExtracting(true);
     setExtractionError(null);
     setExtractionProgress('Loading sample candidate record...');
 
     try {
-      const result = await parseResumeWithAI({
-        resumeText: sample.rawText,
-        fileName: `${sample.applicantName}_resume.txt`,
-        fileSize: sample.rawText.length,
-      });
-      onDataExtracted(result.data);
+      // Load sample directly from known structured data without calling Gemini extraction endpoint
+      await new Promise((r) => setTimeout(r, 200));
+      const sampleData: ApplicantData = {
+        ...sample.structuredData,
+        rawText: sample.rawText,
+        fileName,
+        extractedAt: new Date().toISOString(),
+      };
+      onDataExtracted(sampleData);
     } catch (err: any) {
-      const isUnavailable =
-        err?.isTemporaryUnavailable ||
-        /temporarily unavailable|high[\s-]demand|503/i.test(String(err?.message || ''));
-
-      if (isUnavailable) {
-        setExtractionError('AI resume extraction is temporarily unavailable due to high demand. Please try again.');
-      } else {
-        setExtractionError('Extraction encountered an error with sample record.');
-      }
+      console.error('Sample loading error:', err);
     } finally {
       setIsExtracting(false);
       setExtractionProgress('');
@@ -170,6 +227,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
 
     setIsExtracting(true);
     setExtractionError(null);
+    setIsInvalidDoc(false);
     setExtractionProgress('Extracting candidate details with AI...');
 
     try {
@@ -178,17 +236,27 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
         fileName: 'pasted_resume.txt',
         fileSize: rawText.length,
       });
+
+      if (!result.success) {
+        if (result.isInvalidDocumentType) {
+          setIsInvalidDoc(true);
+          setExtractionError(result.message);
+        } else {
+          // Recoverable temporary outage: do not throw or log console.error
+          setIsInvalidDoc(false);
+          setExtractionError(result.message);
+        }
+        return;
+      }
+
       onDataExtracted(result.data);
     } catch (err: any) {
-      const isUnavailable =
-        err?.isTemporaryUnavailable ||
-        /temporarily unavailable|high[\s-]demand|503/i.test(String(err?.message || ''));
-
-      if (isUnavailable) {
-        setExtractionError('AI resume extraction is temporarily unavailable due to high demand. Please try again.');
-      } else {
-        setExtractionError('Extraction encountered an error with the pasted text.');
-      }
+      // Unexpected programming errors should still be logged normally
+      console.error('Unexpected error during paste extraction:', err);
+      setIsInvalidDoc(false);
+      setExtractionError(
+        'AI resume extraction is temporarily unavailable. Your document has not been processed yet.'
+      );
     } finally {
       setIsExtracting(false);
       setExtractionProgress('');
@@ -323,18 +391,20 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSelectedFile(uploadedFile);
-                  }}
-                  disabled={isExtracting}
-                  className="px-3 py-1.5 text-xs font-medium text-emerald-900 bg-emerald-200/80 hover:bg-emerald-300 rounded flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isExtracting ? 'animate-spin' : ''}`} />
-                  <span>Retry Extraction</span>
-                </button>
+                {!extractionError && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectedFile(uploadedFile);
+                    }}
+                    disabled={isExtracting}
+                    className="px-3 py-1.5 text-xs font-medium text-emerald-900 bg-emerald-200/80 hover:bg-emerald-300 rounded flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isExtracting ? 'animate-spin' : ''}`} />
+                    <span>Retry AI Extraction</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -446,26 +516,85 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
 
         {/* Extraction error banner */}
         {extractionError && (
-          <div className="mt-6 p-4 bg-amber-50 border border-amber-300 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="mt-6 p-5 bg-amber-50 border border-amber-300 rounded-xl space-y-4">
             <div className="flex items-start gap-3">
               <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
               <div>
-                <p className="text-xs font-bold text-amber-950">Extraction Notice</p>
-                <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">{extractionError}</p>
+                <p className="text-xs font-bold text-amber-950 uppercase tracking-wide">
+                  Extraction Notice
+                </p>
+                <p className="text-xs text-amber-900 mt-1 font-medium leading-relaxed">
+                  {extractionError}
+                </p>
+                {uploadedFile && (
+                  <p className="text-[11px] text-amber-800 mt-1">
+                    {isInvalidDoc
+                      ? <>Uploaded file: <span className="font-semibold">{uploadedFile.name}</span></>
+                      : <>Your uploaded document (<span className="font-semibold">{uploadedFile.name}</span>) remains loaded and has not been cleared.</>}
+                  </p>
+                )}
               </div>
             </div>
 
-            {(uploadedFile || (activeTab === 'paste' && rawText.trim()) || selectedSampleId) && (
-              <button
-                type="button"
-                onClick={handleRetryExtraction}
-                disabled={isExtracting}
-                className="px-4 py-2 text-xs font-semibold text-white bg-emerald-800 hover:bg-emerald-900 rounded-lg shadow-xs transition-colors flex items-center justify-center gap-1.5 shrink-0 disabled:opacity-50 cursor-pointer"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isExtracting ? 'animate-spin' : ''}`} />
-                <span>Retry Extraction</span>
-              </button>
-            )}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2.5 pt-3 border-t border-amber-200/80">
+              {isInvalidDoc ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleChooseDifferentFile}
+                    className="px-4 py-2 text-xs font-semibold text-white bg-emerald-800 hover:bg-emerald-900 rounded-lg shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <UploadCloud className="w-3.5 h-3.5" />
+                    <span>Choose Different File</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleEnterManually}
+                    className="px-4 py-2 text-xs font-semibold text-stone-700 bg-white hover:bg-stone-50 border border-stone-300 rounded-lg shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-stone-600" />
+                    <span>Enter Information Manually</span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleRetryExtraction}
+                    disabled={isExtracting}
+                    className="px-4 py-2 text-xs font-semibold text-white bg-emerald-800 hover:bg-emerald-900 rounded-lg shadow-xs transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isExtracting ? 'animate-spin' : ''}`} />
+                    <span>Retry AI Extraction</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleEnterManually}
+                    className="px-4 py-2 text-xs font-semibold text-stone-700 bg-white hover:bg-stone-50 border border-stone-300 rounded-lg shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-stone-600" />
+                    <span>Enter Information Manually</span>
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Alternative direct manual entry link - hidden when Extraction Notice is active */}
+        {!extractionError && (
+          <div className="mt-8 pt-4 border-t border-stone-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-stone-500">
+            <span>Prefer to fill out your application by hand?</span>
+            <button
+              type="button"
+              onClick={handleEnterManually}
+              className="text-emerald-800 hover:text-emerald-950 font-semibold underline underline-offset-2 flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>Enter Information Manually</span>
+            </button>
           </div>
         )}
       </div>

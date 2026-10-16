@@ -72,7 +72,7 @@ app.post('/api/extract-resume', async (req, res) => {
 
     if (simulate503 || req.query.simulate503 === 'true') {
       return res.status(503).json({
-        error: 'AI resume extraction is temporarily unavailable due to high demand. Please try again.',
+        error: 'AI resume extraction is temporarily unavailable. Your document has not been processed yet.',
         temporaryUnavailable: true,
       });
     }
@@ -92,28 +92,47 @@ app.post('/api/extract-resume', async (req, res) => {
     if (!extractedPlainText.trim() && (!buffer || cleanMimeType !== 'application/pdf')) {
       return res.status(400).json({
         error: 'Unable to extract text from the uploaded document. Please ensure it is a valid PDF, DOCX, or text file.',
-        fallbackNeeded: true,
+        fallbackNeeded: false,
       });
     }
 
     if (!ai) {
-      return res.status(200).json({
-        success: false,
-        fallbackNeeded: true,
-        extractedText: extractedPlainText,
-        message: 'GEMINI_API_KEY not configured on server. Switching to local structured intake parser.',
+      return res.status(503).json({
+        error: 'AI resume extraction is temporarily unavailable. Your document has not been processed yet.',
+        temporaryUnavailable: true,
       });
     }
 
     const systemInstruction = `You are an applicant data extraction specialist for the Cascade Peak Outfitters recruitment portal prototype.
 The company receives about 4,800 applications per year and is testing this front-end prototype to standardize applicant intake.
 
-CRITICAL INSTRUCTIONS:
-1. STRICT ACCURACY: Do NOT invent, assume, extrapolate, or hallucinate missing information.
-2. If any field (full name, email, phone number, location, education graduation year, skills) is not explicitly stated in the resume, leave it as an empty string ("") or empty array ([]).
-3. Identify all missing required fields and list them explicitly in "missingFields" (e.g., "Full Name", "Email Address", "Phone Number", "Location", "Education", "Graduation Year", "Work Experience").
-4. Normalize dates into readable standard formats (e.g. "Jun 2021 - Present" or "2019 - 2023").
-5. Do NOT include fictional company facts, salaries, or marketing claims.`;
+CRITICAL DOCUMENT CLASSIFICATION & DATA QUALITY INSTRUCTIONS:
+1. DOCUMENT CLASSIFICATION:
+   - First, determine whether the document reasonably appears to be a resume or curriculum vitae (CV).
+   - A resume/CV may contain combinations of:
+     * contact information,
+     * education,
+     * work or volunteer experience,
+     * skills,
+     * qualifications,
+     * professional summary,
+     * employment history.
+   - DO NOT reject legitimate resumes just because information is missing (e.g. candidate has no work experience yet, or is missing a phone number or graduation year). As long as it is an applicant's resume or CV, set isResumeOrCv to true.
+   - If the document clearly appears to be something unrelated, such as an academic paper, research paper, essay, report, invoice, receipt, class assignment, homework, syllabus, or article:
+     * Set isResumeOrCv to false.
+     * Set documentType to the detected type (e.g., "academic_paper", "essay", "invoice", "report", "class_assignment", "other").
+     * Do NOT create an applicant record from it.
+     * Do NOT use a person's name found in the unrelated document (such as an author, professor, student, or client) as applicant data. Set fullName to "".
+     * Set all other applicant fields to empty strings or empty arrays [].
+2. STRICT ACCURACY: Do NOT invent, assume, extrapolate, or hallucinate missing information.
+3. NO PLACEHOLDERS: Do NOT generate placeholder values such as "Organization / Company", "Higher Education Institution", "Degree Completed", section headings, partial summary sentences, or other inferred information as applicant records.
+4. CLEAR RECORDS ONLY: Only create education or work-experience entries when the source document contains a clearly identified record. If none is clearly identifiable, return an empty array [].
+5. WORK EXPERIENCE IS OPTIONAL: If work experience is found, extract and display it. If none is present, return an empty array []. Missing work experience must not count as an error and must NOT be added to missingFields.
+6. UNCERTAIN FIELDS: If extraction succeeds but any field is uncertain or not explicitly stated, leave it blank (empty string "" or empty array []) or flag it in "missingFields" rather than guessing.
+7. SKILLS ARE OPTIONAL: Extract only skills and competencies explicitly stated in the resume. If none are explicitly stated, return an empty array []. Skills are optional and must NOT be added to missingFields.
+8. MISSING FIELDS: Identify missing standard required fields and list them explicitly in "missingFields" (e.g., "Full Name", "Email Address", "Phone Number", "Location", "Education History", "Graduation Year"). Do NOT flag Work Experience or Skills.
+9. DATES: Normalize dates into standard readable formats. For education, graduationYear must be a 4-digit year (e.g. "2022") if explicitly stated; otherwise leave empty string "".
+10. FACTUAL INTEGRITY: Do NOT include fictional company facts, salaries, or marketing claims.`;
 
     // Prepare contents: for PDF, we can pass native inlineData or the extracted text
     let contentsPayload: any;
@@ -145,11 +164,19 @@ CRITICAL INSTRUCTIONS:
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            fullName: { type: Type.STRING, description: 'Full legal name, empty string if missing' },
-            email: { type: Type.STRING, description: 'Email address, empty string if missing' },
-            phone: { type: Type.STRING, description: 'Phone number, empty string if missing' },
-            location: { type: Type.STRING, description: 'City and State/Country, empty string if missing' },
-            summary: { type: Type.STRING, description: 'Professional summary, empty string if not found' },
+            isResumeOrCv: {
+              type: Type.BOOLEAN,
+              description: 'Whether the document reasonably appears to be a resume or CV (true) or an unrelated document like an essay, academic paper, invoice, report, or class assignment (false)',
+            },
+            documentType: {
+              type: Type.STRING,
+              description: 'Classification: resume, cv, academic_paper, essay, report, invoice, class_assignment, other',
+            },
+            fullName: { type: Type.STRING, description: 'Full legal name, empty string if missing or not a resume' },
+            email: { type: Type.STRING, description: 'Email address, empty string if missing or not a resume' },
+            phone: { type: Type.STRING, description: 'Phone number, empty string if missing or not a resume' },
+            location: { type: Type.STRING, description: 'City and State/Country, empty string if missing or not a resume' },
+            summary: { type: Type.STRING, description: 'Professional summary, empty string if not found or not a resume' },
             skills: {
               type: Type.ARRAY,
               items: { type: Type.STRING },
@@ -187,19 +214,29 @@ CRITICAL INSTRUCTIONS:
             missingFields: {
               type: Type.ARRAY,
               items: { type: Type.STRING },
-              description: 'Names of standard fields missing from the resume',
+              description: 'Names of standard required fields missing from the resume',
             },
             extractionConfidenceNotes: {
               type: Type.STRING,
               description: 'Audit note summarizing extraction completeness and flagged missing items',
             },
           },
-          required: ['fullName', 'email', 'skills', 'education', 'workExperience', 'missingFields'],
+          required: ['isResumeOrCv', 'fullName', 'email', 'skills', 'education', 'workExperience', 'missingFields'],
         },
       },
     });
 
     const parsedJson = JSON.parse(response.text || '{}');
+
+    if (parsedJson.isResumeOrCv === false) {
+      return res.status(422).json({
+        success: false,
+        isInvalidDocumentType: true,
+        documentType: parsedJson.documentType || 'unrelated_document',
+        error: 'This document does not appear to be a resume or CV. Please choose a different file or enter your information manually.',
+      });
+    }
+
     return res.json({
       success: true,
       data: parsedJson,
@@ -207,8 +244,6 @@ CRITICAL INSTRUCTIONS:
       source: 'gemini-3.8-flash',
     });
   } catch (error: any) {
-    console.error('Error in /api/extract-resume:', error);
-
     const errStr = String(error?.message || error?.statusText || '');
     const isTemporaryUnavailable =
       error?.status === 503 ||
@@ -217,15 +252,19 @@ CRITICAL INSTRUCTIONS:
       /503|unavailable|high[\s-]demand|overloaded|resource exhausted|rate limit|temporarily unavailable/i.test(errStr);
 
     if (isTemporaryUnavailable) {
+      // Treat expected temporary service outage as recoverable status without console.error
       return res.status(503).json({
-        error: 'AI resume extraction is temporarily unavailable due to high demand. Please try again.',
+        error: 'AI resume extraction is temporarily unavailable. Your document has not been processed yet.',
         temporaryUnavailable: true,
       });
     }
 
+    // Unexpected programming errors should still be logged normally
+    console.error('Unexpected error in /api/extract-resume:', error);
+
     return res.status(500).json({
-      error: error.message || 'Failed to extract resume with AI.',
-      fallbackNeeded: true,
+      error: 'An unexpected error occurred during extraction.',
+      details: error.message || 'Internal server error',
     });
   }
 });

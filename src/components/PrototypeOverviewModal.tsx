@@ -51,7 +51,7 @@ export const PrototypeOverviewModal: React.FC<PrototypeOverviewModalProps> = ({
   const previewPayload = currentSubmission || {
     referenceId: 'CPO-DEV-PREVIEW-2026',
     submittedAt: new Date().toISOString(),
-    status: 'READY_FOR_ATS_INTEGRATION',
+    status: 'STANDARDIZED_FOR_FUTURE_INTEGRATION',
     applicant: applicantData || {
       fullName: 'Jordan Vance',
       email: 'jordan.vance@example.com',
@@ -86,19 +86,19 @@ export const PrototypeOverviewModal: React.FC<PrototypeOverviewModalProps> = ({
     },
     selectedPositions:
       selectedPositions && selectedPositions.length > 0
-        ? selectedPositions
+        ? selectedPositions.map((pos) => ({
+            id: pos.id,
+            title: pos.title,
+          }))
         : [
             {
               id: 'business-analyst',
               title: 'Business Analyst',
-              department: 'Corporate Strategy & Retail Analytics',
-              location: 'Seattle, WA / Bend, OR',
-              workType: 'Full-Time · Hybrid',
             },
           ],
     metadata: {
       intakeEngine: 'Cascade Peak Automated CV Parser (Gemini 3.8 Flash)',
-      validationStatus: 'COMPLIANT_FOR_ATS_IMPORT',
+      validationStatus: 'PROTOTYPE_VALIDATED',
       storageNotice: 'In-memory front-end prototype. Prepared for future ATS/database integration.',
     },
   };
@@ -124,8 +124,11 @@ export const PrototypeOverviewModal: React.FC<PrototypeOverviewModalProps> = ({
         {/* Modal Header */}
         <div className="p-6 border-b border-stone-200 flex items-start justify-between bg-stone-50/70">
           <div>
-            <div className="flex items-center gap-2 text-xs font-semibold text-emerald-800 tracking-wide uppercase">
-              <FileCheck className="w-4 h-4" />
+            <div className="text-[11px] font-semibold text-emerald-800 tracking-wide mb-1">
+              MIS 250: Managing Information Technology — Project 1
+            </div>
+            <div className="flex items-center gap-2 text-xs font-semibold text-stone-600 tracking-wide uppercase">
+              <FileCheck className="w-4 h-4 text-emerald-700" />
               <span>Cascade Peak Outfitters Recruitment Case</span>
             </div>
             <h2
@@ -154,7 +157,7 @@ export const PrototypeOverviewModal: React.FC<PrototypeOverviewModalProps> = ({
           {/* Executive Summary of the Business Problem */}
           <div className="p-4 bg-stone-50 rounded-xl border border-stone-200/80 text-xs text-stone-700 leading-relaxed">
             <span className="font-bold text-stone-900 block mb-1">Business Problem Summary:</span>
-            Cascade Peak Outfitters receives about <strong>4,800 applications per year</strong> and currently faces significant operational bottlenecks: manual data entry, incomplete applications, long processing times, and high applicant drop-off. This prototype was built to demonstrate how automated CV extraction, real-time validation, and multi-position selection can reduce HR labor, improve data quality, and accelerate applicant intake.
+            Cascade Peak Outfitters receives about <strong>4,800 applications per year</strong> and currently faces significant operational bottlenecks: manual data entry, incomplete applications, long processing times, and high applicant drop-off. This prototype was built to demonstrate how automated CV extraction, real-time validation, and multi-position selection are designed to reduce HR labor, improve data quality, and streamline applicant intake.
           </div>
 
           {/* Current Operational Baselines */}
@@ -242,7 +245,7 @@ export const PrototypeOverviewModal: React.FC<PrototypeOverviewModalProps> = ({
             </p>
             <ul className="mt-2 space-y-1 pl-4 list-disc text-emerald-900">
               <li>Reducing the <strong>14-minute</strong> manual HR data entry burden per application.</li>
-              <li>Eliminating incomplete applications that drive <strong>1,100</strong> follow-up emails annually.</li>
+              <li>Helping to <strong>reduce incomplete applications that contribute to follow-up emails</strong> (currently 1,100 per year).</li>
               <li>Shortening the <strong>24-minute</strong> application time to address the <strong>22%</strong> drop-off rate.</li>
               <li>Standardizing applicant data to support lower overall recruiter operating costs (currently <strong>$82,000/year</strong>).</li>
             </ul>
@@ -292,8 +295,13 @@ export const PrototypeOverviewModal: React.FC<PrototypeOverviewModalProps> = ({
               </div>
             </div>
 
-            <div className="p-4 text-xs text-stone-400 leading-relaxed border-b border-stone-800/60 bg-stone-900">
-              This section displays the structured JSON data format as a development and testing example for future ATS and database integration without impacting the applicant workflow.
+            <div className="p-4 text-xs text-stone-400 leading-relaxed border-b border-stone-800/60 bg-stone-900 space-y-1">
+              <div className="text-amber-400 font-medium">
+                Example developer data only — this is not the current applicant’s information.
+              </div>
+              <p>
+                This section displays the structured JSON data format as a development and testing example for future ATS and database integration without impacting the applicant workflow.
+              </p>
             </div>
 
             {showDataStructure && (
@@ -307,7 +315,7 @@ export const PrototypeOverviewModal: React.FC<PrototypeOverviewModalProps> = ({
           <div className="p-3.5 bg-stone-100 rounded-xl text-xs text-stone-600 flex items-start gap-2">
             <Info className="w-4 h-4 text-stone-500 shrink-0 mt-0.5" />
             <div>
-              <span className="font-semibold text-stone-800">Front-End Prototype Scope:</span> This tool demonstrates client-side data collection, validation, and standardized formatting ready for future ATS and HRIS integration. No permanent records or live databases are connected in this prototype.
+              <span className="font-semibold text-stone-800">Front-End Prototype Scope:</span> This tool demonstrates front-end data collection, validation, and standardized formatting ready for future ATS and HRIS integration. No permanent records or live databases are connected in this prototype.
             </div>
           </div>
         </div>
