@@ -67,9 +67,7 @@ async function extractTextFromBuffer(buffer: Buffer, mimeType: string, fileName:
 
   if (
     mimeType.includes('wordprocessingml') ||
-    mimeType.includes('msword') ||
-    lowerName.endsWith('.docx') ||
-    lowerName.endsWith('.doc')
+    lowerName.endsWith('.docx')
   ) {
     try {
       const result = await mammoth.extractRawText({ buffer });

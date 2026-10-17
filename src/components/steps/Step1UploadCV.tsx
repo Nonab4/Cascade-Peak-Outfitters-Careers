@@ -36,9 +36,17 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
   const [extractionError, setExtractionError] = useState<string | null>(null);
   const [isInvalidDoc, setIsInvalidDoc] = useState(false);
   const [selectedSampleId, setSelectedSampleId] = useState<string | null>(null);
+  const [isStaleFile, setIsStaleFile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const extractionInProgressRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const cachedFilePayloadRef = useRef<{
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+    base64Data: string;
+    plainText: string;
+  } | null>(null);
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -70,19 +78,39 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
 
   const readFileAsBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        // strip data:*/*;base64, prefix
-        const base64 = result.includes(',') ? result.split(',')[1] : result;
-        resolve(base64);
-      };
-      reader.onerror = (err) => reject(err);
-      reader.readAsDataURL(file);
+      try {
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const result = reader.result as string;
+            // strip data:*/*;base64, prefix
+            const base64 = result.includes(',') ? result.split(',')[1] : result;
+            resolve(base64);
+          } catch (err: any) {
+            console.error('[Step1UploadCV] Error processing FileReader buffer:', err);
+            reject(new Error('The selected file could not be read by the browser. Please choose the file again.'));
+          }
+        };
+        reader.onerror = () => {
+          const detailedError = reader.error?.message || 'FileReader read error';
+          console.warn('[Step1UploadCV] Browser file read failed:', detailedError);
+          reject(new Error('The selected file could not be read by the browser. Please choose the file again.'));
+        };
+        reader.onabort = () => {
+          console.warn('[Step1UploadCV] Browser file read was aborted');
+          reject(new Error('The selected file read was aborted. Please choose the file again.'));
+        };
+        reader.readAsDataURL(file);
+      } catch (syncErr: any) {
+        console.warn('[Step1UploadCV] Exception starting FileReader:', syncErr?.message || syncErr);
+        reject(new Error('The selected file could not be read by the browser. Please choose the file again.'));
+      }
     });
   };
 
   const handleChooseDifferentFile = () => {
+    cachedFilePayloadRef.current = null;
+    setIsStaleFile(false);
     setUploadedFile(null);
     setRawText('');
     setSelectedSampleId(null);
@@ -131,7 +159,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
   const handleRetryExtraction = () => {
     if (isExtracting) return;
     if (uploadedFile) {
-      handleSelectedFile(uploadedFile);
+      handleSelectedFile(uploadedFile, true);
     } else if (activeTab === 'paste' && rawText.trim()) {
       handlePasteExtract();
     } else if (selectedSampleId) {
@@ -140,7 +168,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
     }
   };
 
-  const handleSelectedFile = async (file: File) => {
+  const handleSelectedFile = async (file: File, isRetry: boolean = false) => {
     if (extractionInProgressRef.current) {
       console.warn('[Step1UploadCV] Extraction already in flight, ignoring duplicate request.');
       return;
@@ -154,28 +182,110 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
     abortControllerRef.current = controller;
     extractionInProgressRef.current = true;
 
-    // Treat new file selection as replacing any previously loaded applicant data
-    onClearExistingData?.();
+    // 1. Clear previous applicant state ONLY when replacing with a genuinely new document
+    if (!isRetry) {
+      onClearExistingData?.();
+      setSelectedSampleId(null);
+      // Clear cache if this is a newly selected file (different name or size)
+      if (
+        cachedFilePayloadRef.current &&
+        (cachedFilePayloadRef.current.fileName !== file.name ||
+          cachedFilePayloadRef.current.fileSize !== file.size)
+      ) {
+        cachedFilePayloadRef.current = null;
+      }
+    }
+
     setUploadedFile(file);
     setExtractionError(null);
     setIsInvalidDoc(false);
-    setSelectedSampleId(null);
+    setIsStaleFile(false);
+
+    // 2. Validate file type: Only PDF, DOCX, and TXT are supported (no legacy .doc)
+    const lowerName = file.name.toLowerCase();
+    const isSupportedType =
+      file.type === 'application/pdf' ||
+      lowerName.endsWith('.pdf') ||
+      file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      lowerName.endsWith('.docx') ||
+      file.type === 'text/plain' ||
+      lowerName.endsWith('.txt');
+
+    if (!isSupportedType) {
+      extractionInProgressRef.current = false;
+      setIsExtracting(false);
+      setIsInvalidDoc(false);
+      setIsStaleFile(false);
+      setExtractionError('Unsupported file type. Please upload a PDF, DOCX, or TXT file.');
+      return;
+    }
+
+    // 3. Enforce 15 MB upload limit before starting extraction
+    const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024; // 15 MB
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      extractionInProgressRef.current = false;
+      setIsExtracting(false);
+      setIsInvalidDoc(false);
+      setIsStaleFile(false);
+      setExtractionError('This file is larger than the 15 MB upload limit. Please choose a smaller file.');
+      return;
+    }
+
     setIsExtracting(true);
 
     try {
-      setExtractionProgress('Reading document buffer...');
-
-      const base64Data = await readFileAsBase64(file);
+      let base64Data = '';
       let plainText = '';
-      if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
-        plainText = await file.text();
-        setRawText(plainText);
+      const mimeType = file.type || (file.name.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
+
+      // Check if we have an in-memory cached payload for this exact file (useful on retry)
+      if (
+        cachedFilePayloadRef.current &&
+        cachedFilePayloadRef.current.fileName === file.name &&
+        cachedFilePayloadRef.current.fileSize === file.size
+      ) {
+        console.log(`[Step1UploadCV] Using cached file payload for retry (${file.name}, ${file.size} bytes).`);
+        base64Data = cachedFilePayloadRef.current.base64Data;
+        plainText = cachedFilePayloadRef.current.plainText;
+        if (plainText) {
+          setRawText(plainText);
+        }
+      } else {
+        // Read the file for the first time
+        console.log(`[Step1UploadCV] File read started for "${file.name}" (${file.size} bytes)...`);
+        setExtractionProgress('Reading document buffer...');
+
+        try {
+          base64Data = await readFileAsBase64(file);
+          if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
+            plainText = await file.text();
+            setRawText(plainText);
+          }
+        } catch (readErr: any) {
+          console.warn('[Step1UploadCV] Browser file read failed:', readErr?.message || readErr);
+          cachedFilePayloadRef.current = null;
+          setIsStaleFile(true);
+          setIsInvalidDoc(false);
+          setExtractionError('The browser can no longer access this uploaded file. Please choose the file again to continue.');
+          return;
+        }
+
+        // Cache the successfully read payload in memory
+        cachedFilePayloadRef.current = {
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType,
+          base64Data,
+          plainText,
+        };
+        console.log(`[Step1UploadCV] File read completed and payload cached (${file.name}).`);
       }
 
+      console.log(`[Step1UploadCV] Sending extraction request to /api/extract-resume...`);
       setExtractionProgress('Extracting candidate details with AI...');
       const result = await parseResumeWithAI({
         fileBase64: base64Data,
-        mimeType: file.type || (file.name.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream'),
+        mimeType,
         fileName: file.name,
         fileSize: file.size,
         resumeText: plainText,
@@ -190,10 +300,12 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
       if (!result.success) {
         if (result.isInvalidDocumentType) {
           setIsInvalidDoc(true);
+          setIsStaleFile(false);
           setExtractionError(result.message);
         } else {
-          // Recoverable temporary outage: keep uploaded file loaded, do not throw or log console.error
+          // Recoverable temporary outage: keep uploaded file and cached payload loaded, do not throw
           setIsInvalidDoc(false);
+          setIsStaleFile(false);
           setExtractionError(result.message);
         }
         return;
@@ -212,6 +324,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
       // Unexpected programming errors should still be logged normally for development troubleshooting
       console.error('Unexpected error during file extraction:', err);
       setIsInvalidDoc(false);
+      setIsStaleFile(false);
       setExtractionError(
         "We couldn't process this document because of an unexpected extraction error. Your file is still loaded. Please retry or enter your information manually."
       );
@@ -399,7 +512,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf,.docx,.doc,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
               className="hidden"
               onChange={handleFileInputChange}
             />
@@ -595,7 +708,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
             </div>
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2.5 pt-3 border-t border-amber-200/80">
-              {isInvalidDoc ? (
+              {isInvalidDoc || isStaleFile ? (
                 <>
                   <button
                     type="button"
@@ -603,7 +716,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
                     className="px-4 py-2 text-xs font-semibold text-white bg-emerald-800 hover:bg-emerald-900 rounded-lg shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <UploadCloud className="w-3.5 h-3.5" />
-                    <span>Choose Different File</span>
+                    <span>{isStaleFile ? 'Choose File Again' : 'Choose Different File'}</span>
                   </button>
 
                   <button

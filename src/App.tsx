@@ -161,6 +161,8 @@ export default function App() {
                 existingData={applicantData}
                 onClearExistingData={() => {
                   setApplicantData(null);
+                  setSelectedPositions([]);
+                  setSubmission(null);
                   setMaxUnlockedStep(1);
                 }}
               />
