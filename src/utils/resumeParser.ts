@@ -493,7 +493,7 @@ export async function parseResumeWithAI(
 
   const formattedPhone = raw.phone ? standardizePhoneNumber(raw.phone) : '';
 
-  console.log(`[ResumeParser] Final extraction success: Applicant data processed for "${raw.fullName || 'Candidate'}" (${missingFields.length} missing required fields detected).`);
+  console.log(`[ResumeParser] Final extraction success: Applicant data processed successfully (${missingFields.length} missing required fields detected).`);
 
   return {
     success: true,

@@ -509,7 +509,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
               }`}
             >
               <UploadCloud className="w-4 h-4" />
-              <span>Upload Document (PDF / DOCX)</span>
+              <span>Upload Document (PDF / DOCX / TXT)</span>
             </button>
             <button
               onClick={() => setActiveTab('samples')}

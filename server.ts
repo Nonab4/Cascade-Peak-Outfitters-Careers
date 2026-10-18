@@ -523,7 +523,7 @@ CRITICAL DOCUMENT CLASSIFICATION & DATA QUALITY INSTRUCTIONS:
     }
 
     console.log(
-      `[ResumeServer] Extraction completed successfully using ${usedNativePdf ? 'native-PDF' : 'extracted-text'} mode for "${parsedJson.fullName || cleanFileName}".`
+      `[ResumeServer] Extraction completed successfully using ${usedNativePdf ? 'native-PDF' : 'extracted-text'} mode.`
     );
 
     return res.status(200).json({
