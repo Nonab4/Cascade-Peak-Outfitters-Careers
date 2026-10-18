@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { ApplicantData } from '../../types/application';
 import { SAMPLE_RESUMES, SampleResume } from '../../data/sampleResumes';
-import { parseResumeWithAI } from '../../utils/resumeParser';
+import { parseResumeWithAI, resolveExtractionEndpoint } from '../../utils/resumeParser';
 
 interface Step1UploadCVProps {
   onDataExtracted: (data: ApplicantData) => void;
@@ -37,6 +37,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
   const [isInvalidDoc, setIsInvalidDoc] = useState(false);
   const [selectedSampleId, setSelectedSampleId] = useState<string | null>(null);
   const [isStaleFile, setIsStaleFile] = useState(false);
+  const [isRoutingError, setIsRoutingError] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const extractionInProgressRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -156,8 +157,24 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
     onDataExtracted(blankData);
   };
 
-  const handleRetryExtraction = () => {
+  const handleRetryExtraction = async () => {
     if (isExtracting) return;
+
+    // If previous attempt failed with a routing error, verify that backend is healthy before retrying
+    if (isRoutingError) {
+      setExtractionProgress('Verifying backend connectivity…');
+      setIsExtracting(true);
+      const healthyEndpoint = await resolveExtractionEndpoint();
+      setIsExtracting(false);
+      setExtractionProgress('');
+      if (!healthyEndpoint) {
+        setExtractionError('The application backend is temporarily unavailable in the preview environment. Please refresh the preview and try again.');
+        return;
+      }
+      setIsRoutingError(false);
+      setExtractionError(null);
+    }
+
     if (uploadedFile) {
       handleSelectedFile(uploadedFile, true);
     } else if (activeTab === 'paste' && rawText.trim()) {
@@ -298,14 +315,21 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
       }
 
       if (!result.success) {
-        if (result.isInvalidDocumentType) {
+        if (result.isRoutingFailure) {
+          setIsRoutingError(true);
+          setIsInvalidDoc(false);
+          setIsStaleFile(false);
+          setExtractionError(result.message);
+        } else if (result.isInvalidDocumentType) {
           setIsInvalidDoc(true);
           setIsStaleFile(false);
+          setIsRoutingError(false);
           setExtractionError(result.message);
         } else {
           // Recoverable temporary outage: keep uploaded file and cached payload loaded, do not throw
           setIsInvalidDoc(false);
           setIsStaleFile(false);
+          setIsRoutingError(false);
           setExtractionError(result.message);
         }
         return;
@@ -403,12 +427,18 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
       }
 
       if (!result.success) {
-        if (result.isInvalidDocumentType) {
+        if (result.isRoutingFailure) {
+          setIsRoutingError(true);
+          setIsInvalidDoc(false);
+          setExtractionError(result.message);
+        } else if (result.isInvalidDocumentType) {
           setIsInvalidDoc(true);
+          setIsRoutingError(false);
           setExtractionError(result.message);
         } else {
           // Recoverable temporary outage: do not throw or log console.error
           setIsInvalidDoc(false);
+          setIsRoutingError(false);
           setExtractionError(result.message);
         }
         return;

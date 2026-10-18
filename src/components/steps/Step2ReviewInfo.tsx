@@ -94,36 +94,145 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
 
   const hasSkills = formData.skills.length > 0;
 
-  // Build explicit list of all correction requirements
-  const validationErrors: string[] = [];
-  if (!isNameValid) validationErrors.push('Full Legal Name is required (minimum 2 characters).');
-  if (!formData.email.trim()) {
-    validationErrors.push('Email Address is required.');
-  } else if (!isEmailValid) {
-    validationErrors.push('Email Address format is invalid (e.g. applicant@domain.com).');
-  }
-  if (!formData.phone.trim()) {
-    validationErrors.push('Phone Number is required.');
-  } else if (!isPhoneValid) {
-    validationErrors.push('Phone Number must contain 10 digits (e.g. (206) 555-0184).');
-  }
-  if (!isLocationValid) validationErrors.push('Location (City, State / Region) is required.');
-  if (!hasEducation) {
-    validationErrors.push('At least one Education record is required.');
-  } else {
-    if (!areAllEduDegreesValid) {
-      validationErrors.push('Each education record must have a Degree and Institution.');
-    }
-    if (!areAllEduGradYearsValid) {
-      validationErrors.push('Each education record requires a valid 4-digit Graduation Year (e.g., 2022).');
-    }
-  }
-  // Work experience is optional: missing work experience must not count as a validation error
-  if (hasWorkExperience && !areAllWorkItemsValid) {
-    validationErrors.push('Each added work experience record must have a Job Title and Company.');
+  // Build explicit list of all correction requirements with targeted field mapping
+  interface ValidationErrorItem {
+    id: string;
+    message: string;
+    targetFieldId: string;
+    description?: string;
   }
 
-  const isFormValid = validationErrors.length === 0;
+  const validationItems: ValidationErrorItem[] = [];
+
+  if (!isNameValid) {
+    validationItems.push({
+      id: 'fullName',
+      message: 'Full Legal Name is required (minimum 2 characters).',
+      targetFieldId: 'fullName',
+    });
+  }
+
+  if (!formData.email.trim()) {
+    validationItems.push({
+      id: 'email',
+      message: 'Email Address is required.',
+      targetFieldId: 'email',
+    });
+  } else if (!isEmailValid) {
+    validationItems.push({
+      id: 'email',
+      message: 'Email Address format is invalid (e.g. applicant@domain.com).',
+      targetFieldId: 'email',
+    });
+  }
+
+  if (!formData.phone.trim()) {
+    validationItems.push({
+      id: 'phone',
+      message: 'Phone Number is required.',
+      targetFieldId: 'phone',
+    });
+  } else if (!isPhoneValid) {
+    validationItems.push({
+      id: 'phone',
+      message: 'Phone Number must contain 10 digits (e.g. (206) 555-0184).',
+      targetFieldId: 'phone',
+    });
+  }
+
+  if (!isLocationValid) {
+    validationItems.push({
+      id: 'location',
+      message: 'Location (City, State / Region) is required.',
+      targetFieldId: 'location',
+    });
+  }
+
+  if (!hasEducation) {
+    validationItems.push({
+      id: 'education-add',
+      message: 'At least one Education record is required.',
+      targetFieldId: 'add-education-btn',
+    });
+  } else {
+    // Find first invalid education degree/institution
+    const invalidDegreeIndex = formData.education.findIndex(
+      (e) => !e.degree.trim() || !e.institution.trim()
+    );
+    if (invalidDegreeIndex !== -1) {
+      const invEdu = formData.education[invalidDegreeIndex];
+      const targetSubId = !invEdu.degree.trim()
+        ? `edu-degree-${invEdu.id}`
+        : `edu-institution-${invEdu.id}`;
+      validationItems.push({
+        id: `edu-degree-${invEdu.id}`,
+        message: 'Each education record must have a Degree and Institution.',
+        targetFieldId: targetSubId,
+      });
+    }
+
+    // Find first invalid education graduation year
+    const invalidYearIndex = formData.education.findIndex(
+      (e) => !e.graduationYear || !isValidGraduationYear(e.graduationYear)
+    );
+    if (invalidYearIndex !== -1) {
+      const invEdu = formData.education[invalidYearIndex];
+      validationItems.push({
+        id: `edu-year-${invEdu.id}`,
+        message: 'Each education record requires a valid 4-digit Graduation Year (e.g., 2022).',
+        targetFieldId: `edu-year-${invEdu.id}`,
+      });
+    }
+  }
+
+  // Work experience is optional: missing work experience must not count as a validation error
+  if (hasWorkExperience) {
+    const invalidWorkIndex = formData.workExperience.findIndex(
+      (w) => !w.title.trim() || !w.company.trim()
+    );
+    if (invalidWorkIndex !== -1) {
+      const invWork = formData.workExperience[invalidWorkIndex];
+      const targetSubId = !invWork.title.trim()
+        ? `work-title-${invWork.id}`
+        : `work-company-${invWork.id}`;
+      validationItems.push({
+        id: `work-${invWork.id}`,
+        message: 'Each added work experience record must have a Job Title and Company.',
+        targetFieldId: targetSubId,
+      });
+    }
+  }
+
+  const validationErrors: string[] = validationItems.map((item) => item.message);
+  const isFormValid = validationItems.length === 0;
+
+  // Navigation and focus helper for missing/invalid required fields
+  const navigateToField = (elementId: string) => {
+    if (!elementId) return;
+
+    // Special case for adding education when zero records exist
+    if (elementId === 'add-education-btn' && !showAddEdu) {
+      setShowAddEdu(true);
+    }
+
+    // Allow slight microtask delay if toggling draft section
+    setTimeout(() => {
+      const el = document.getElementById(elementId);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Place keyboard focus on the element if focusable
+        if (typeof el.focus === 'function') {
+          el.focus({ preventScroll: true });
+        }
+      }
+    }, 50);
+  };
+
+  const handleNavigateToFirstError = () => {
+    if (validationItems.length > 0) {
+      navigateToField(validationItems[0].targetFieldId);
+    }
+  };
 
   const handleFieldChange = (field: keyof ApplicantData, value: any) => {
     const updated = { ...formData, [field]: value };
@@ -259,27 +368,63 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
         </div>
 
         {/* Validation Summary Callout if missing fields or errors exist */}
-        {!isFormValid || validationErrors.length > 0 ? (
-          <div className="mt-6 p-5 bg-amber-50/90 border border-amber-300 rounded-xl">
+        {!isFormValid || validationItems.length > 0 ? (
+          <div
+            onClick={handleNavigateToFirstError}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleNavigateToFirstError();
+              }
+            }}
+            aria-label="Click to navigate to the first required missing field"
+            className="mt-6 p-5 bg-amber-50/90 border border-amber-300 rounded-xl cursor-pointer hover:bg-amber-100/60 hover:border-amber-400 transition-all group focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+          >
             <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+              <AlertCircle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5 group-hover:scale-105 transition-transform" />
               <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wide">
-                    Required Information & Format Corrections ({validationErrors.length})
-                  </h4>
-                  <span className="text-[11px] text-amber-800 font-medium">
-                    · Action required to proceed
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wide">
+                      Required Information & Format Corrections ({validationItems.length})
+                    </h4>
+                    <span className="text-[11px] text-amber-800 font-medium">
+                      · Action required to proceed
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-amber-800 font-medium underline underline-offset-2 group-hover:text-amber-950 transition-colors">
+                    Click to jump to first missing field →
                   </span>
                 </div>
                 <p className="text-xs text-amber-800 mt-1">
-                  The following required items must be entered or corrected before proceeding:
+                  The following required items must be entered or corrected before proceeding (click any item to jump directly to it):
                 </p>
                 <ul className="mt-2.5 space-y-1.5 text-xs text-amber-900">
-                  {validationErrors.map((err, idx) => (
-                    <li key={idx} className="flex items-start gap-2">
-                      <span className="text-amber-700 font-bold leading-none mt-1">·</span>
-                      <span>{err}</span>
+                  {validationItems.map((item) => (
+                    <li
+                      key={item.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigateToField(item.targetFieldId);
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          navigateToField(item.targetFieldId);
+                        }
+                      }}
+                      aria-label={`Jump to ${item.message}`}
+                      className="flex items-start gap-2 p-1 -mx-1 rounded-md hover:bg-amber-200/50 cursor-pointer transition-colors group/item"
+                    >
+                      <span className="text-amber-700 font-bold leading-none mt-1 group-hover/item:text-amber-950">·</span>
+                      <span className="group-hover/item:text-amber-950 group-hover/item:underline underline-offset-2 font-medium">
+                        {item.message}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -469,6 +614,7 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
           </div>
 
           <button
+            id="add-education-btn"
             type="button"
             onClick={() => setShowAddEdu(!showAddEdu)}
             className="px-3 py-1.5 text-xs font-medium text-emerald-900 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-300 transition-colors flex items-center gap-1.5"
@@ -511,10 +657,11 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-[11px] font-semibold text-stone-700 mb-1">
+                    <label htmlFor={`edu-degree-${edu.id}`} className="block text-[11px] font-semibold text-stone-700 mb-1">
                       Degree / Credential <span className="text-rose-600">*</span>
                     </label>
                     <input
+                      id={`edu-degree-${edu.id}`}
                       type="text"
                       value={edu.degree}
                       onChange={(e) => handleUpdateEducation(edu.id, 'degree', e.target.value)}
@@ -524,10 +671,11 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-semibold text-stone-700 mb-1">
+                    <label htmlFor={`edu-institution-${edu.id}`} className="block text-[11px] font-semibold text-stone-700 mb-1">
                       Institution / University <span className="text-rose-600">*</span>
                     </label>
                     <input
+                      id={`edu-institution-${edu.id}`}
                       type="text"
                       value={edu.institution}
                       onChange={(e) => handleUpdateEducation(edu.id, 'institution', e.target.value)}
@@ -538,7 +686,7 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
 
                   <div>
                     <div className="flex items-center justify-between">
-                      <label className="block text-[11px] font-semibold text-stone-700 mb-1">
+                      <label htmlFor={`edu-year-${edu.id}`} className="block text-[11px] font-semibold text-stone-700 mb-1">
                         Graduation Year (4 Digits) <span className="text-rose-600">*</span>
                       </label>
                       {!hasValidGradYear && (
@@ -550,6 +698,7 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
 
                     <div className="flex gap-2">
                       <select
+                        id={`edu-year-${edu.id}`}
                         value={hasValidGradYear ? edu.graduationYear : ''}
                         onChange={(e) => handleUpdateEducation(edu.id, 'graduationYear', e.target.value)}
                         className={`w-full px-3 py-2 text-xs sm:text-sm rounded border font-mono ${
@@ -687,10 +836,11 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[11px] font-semibold text-stone-700 mb-1">
+                  <label htmlFor={`work-title-${work.id}`} className="block text-[11px] font-semibold text-stone-700 mb-1">
                     Job Title <span className="text-rose-600">*</span>
                   </label>
                   <input
+                    id={`work-title-${work.id}`}
                     type="text"
                     value={work.title}
                     onChange={(e) => handleUpdateWork(work.id, 'title', e.target.value)}
@@ -699,10 +849,11 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-stone-700 mb-1">
+                  <label htmlFor={`work-company-${work.id}`} className="block text-[11px] font-semibold text-stone-700 mb-1">
                     Company / Organization <span className="text-rose-600">*</span>
                   </label>
                   <input
+                    id={`work-company-${work.id}`}
                     type="text"
                     value={work.company}
                     onChange={(e) => handleUpdateWork(work.id, 'company', e.target.value)}
@@ -938,7 +1089,7 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
         <button
           type="button"
           onClick={onBack}
-          className="px-4 py-2.5 text-xs font-semibold text-stone-700 bg-white border border-stone-300 hover:bg-stone-50 rounded-lg shadow-xs transition-colors flex items-center gap-2"
+          className="px-4 py-2.5 text-xs font-semibold text-stone-700 bg-white border border-stone-300 hover:bg-stone-50 rounded-lg shadow-xs transition-colors flex items-center gap-2 cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>Back to Upload</span>
@@ -946,10 +1097,17 @@ export const Step2ReviewInfo: React.FC<Step2ReviewInfoProps> = ({
 
         <div className="flex items-center gap-3">
           {!isFormValid && (
-            <span className="text-xs text-amber-800 font-medium flex items-center gap-1 bg-amber-50 px-2.5 py-1.5 rounded border border-amber-200">
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-              <span>Please resolve highlighted required fields to continue ({validationErrors.length} remaining)</span>
-            </span>
+            <button
+              type="button"
+              onClick={handleNavigateToFirstError}
+              aria-label="Click to jump to the first required missing field"
+              className="text-xs text-amber-900 font-medium flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100/80 active:bg-amber-200/70 px-3 py-1.5 rounded-lg border border-amber-300 hover:border-amber-400 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-1 text-left group"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-700 shrink-0 group-hover:scale-110 transition-transform" />
+              <span>
+                Please resolve highlighted required fields to continue ({validationItems.length} remaining)
+              </span>
+            </button>
           )}
 
           <button

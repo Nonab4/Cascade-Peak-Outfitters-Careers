@@ -74,9 +74,61 @@ export function isLikelyUnrelatedDocument(text: string): boolean {
 
 export type ParseResumeResult =
   | { success: true; data: ApplicantData; usedAI: boolean; notes?: string }
-  | { success: false; temporaryUnavailable: true; message: string; isInvalidDocumentType?: false; unexpectedError?: false }
-  | { success: false; isInvalidDocumentType: true; message: string; temporaryUnavailable?: false; unexpectedError?: false }
-  | { success: false; unexpectedError: true; message: string; temporaryUnavailable: false; isInvalidDocumentType?: false };
+  | { success: false; temporaryUnavailable: true; message: string; isInvalidDocumentType?: false; unexpectedError?: false; isRoutingFailure?: false }
+  | { success: false; isInvalidDocumentType: true; message: string; temporaryUnavailable?: false; unexpectedError?: false; isRoutingFailure?: false }
+  | { success: false; unexpectedError: true; message: string; temporaryUnavailable: false; isInvalidDocumentType?: false; isRoutingFailure?: boolean };
+
+// Active endpoint resolution with health check
+export async function checkBackendEndpointHealth(
+  endpointPrefix: '/api' | '/backend',
+  signal?: AbortSignal
+): Promise<boolean> {
+  try {
+    const res = await fetch(`${endpointPrefix}/health`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal,
+    });
+    const contentType = res.headers.get('content-type') || '';
+    if (res.ok && contentType.includes('application/json')) {
+      const data = await res.json().catch(() => null);
+      if (data && (data.status === 'ok' || data.backend === true)) {
+        return true;
+      }
+    }
+    return false;
+  } catch (_e) {
+    return false;
+  }
+}
+
+let cachedWorkingEndpoint: '/api/extract-resume' | '/backend/extract-resume' | null = null;
+
+export async function resolveExtractionEndpoint(
+  signal?: AbortSignal
+): Promise<'/api/extract-resume' | '/backend/extract-resume' | null> {
+  // Test /api/health first
+  const apiHealthy = await checkBackendEndpointHealth('/api', signal);
+  if (apiHealthy) {
+    console.log('[ResumeParser] Backend health check passed: /api');
+    cachedWorkingEndpoint = '/api/extract-resume';
+    return '/api/extract-resume';
+  }
+
+  console.warn('[ResumeParser] Backend health check failed: /api returned text/html or was unreachable.');
+
+  // Test /backend/health fallback
+  const backendHealthy = await checkBackendEndpointHealth('/backend', signal);
+  if (backendHealthy) {
+    console.log('[ResumeParser] Backend health check passed: /backend');
+    cachedWorkingEndpoint = '/backend/extract-resume';
+    return '/backend/extract-resume';
+  }
+
+  console.warn('[ResumeParser] Backend health check failed: /backend returned text/html or was unreachable.');
+  cachedWorkingEndpoint = null;
+  return null;
+}
 
 export async function parseResumeWithAI(
   options: ParseResumeOptions
@@ -91,6 +143,22 @@ export async function parseResumeWithAI(
         'This document does not appear to be a resume or CV. Please choose a different file or enter your information manually.',
     };
   }
+
+  // 1. Verify backend routing health before initiating extraction
+  onStatusUpdate?.('Verifying backend connectivity…');
+  const targetEndpoint = await resolveExtractionEndpoint(signal);
+  if (!targetEndpoint) {
+    console.error('[ResumeParser] Neither /api/health nor /backend/health returned valid JSON. Preview proxy intercepting API.');
+    return {
+      success: false,
+      unexpectedError: true,
+      temporaryUnavailable: false,
+      isRoutingFailure: true,
+      message: 'The application backend is temporarily unavailable in the preview environment. Please refresh the preview and try again.',
+    };
+  }
+
+  console.log(`[ResumeParser] Selected extraction endpoint: ${targetEndpoint}`);
 
   // Separate retry schedules:
   // - 503 Temporary Service Outages: 3 retries at ~2s, ~5s, ~10s
@@ -121,9 +189,9 @@ export async function parseResumeWithAI(
     }
 
     try {
-      response = await fetch('/api/extract-resume', {
+      response = await fetch(targetEndpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ resumeText, fileBase64, mimeType, fileName }),
         signal,
       });
@@ -158,20 +226,22 @@ export async function parseResumeWithAI(
     // Inspect Content-Type: verify we received JSON and not an HTML routing fallback
     const contentType = response.headers?.get('content-type') || 'unknown';
     console.log(
-      `[ResumeParser] HTTP ${response.status} received from ${response.url || '/api/extract-resume'} (Content-Type: ${contentType}) on attempt ${attempt}.`
+      `[ResumeParser] HTTP ${response.status} received from ${response.url || targetEndpoint} (Content-Type: ${contentType}) on attempt ${attempt}.`
     );
 
     if (!contentType.includes('application/json')) {
       const previewText = await response.text().catch(() => '');
       console.error(
-        `[ResumeParser] Expected JSON response from ${response.url || '/api/extract-resume'} (status: ${response.status}) but received Content-Type: "${contentType}". Route returned HTML instead of API payload. Preview: ${previewText.slice(0, 120)}...`
+        `[ResumeParser] Expected JSON response from ${response.url || targetEndpoint} (status: ${response.status}) but received Content-Type: "${contentType}". Route returned HTML instead of API payload. Preview: ${previewText.slice(0, 120)}...`
       );
+      cachedWorkingEndpoint = null;
       return {
         success: false,
         unexpectedError: true,
         temporaryUnavailable: false,
+        isRoutingFailure: true,
         message:
-          'We received an unexpected response while processing this document. Your file is still loaded. Please retry or enter your information manually.',
+          'The application backend is temporarily unavailable in the preview environment. Please refresh the preview and try again.',
       };
     }
 
