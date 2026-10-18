@@ -63,9 +63,9 @@ export const Step4FinalReview: React.FC<Step4FinalReviewProps> = ({
 
           <div className="mt-4 p-3 bg-stone-100 rounded-lg text-xs text-stone-600 flex items-start gap-2">
             <Info className="w-4 h-4 text-stone-500 shrink-0 mt-0.5" />
-            <span>
-              <strong>Front-End Prototype Notice:</strong> Submitting will format your validated dossier so it is structured and ready for future database or ATS integration. No live database transmission occurs.
-            </span>
+            <div>
+              <strong>Front-End Prototype Notice:</strong> Submitting will format your validated application dossier so it is structured for future ATS/HRIS integration. Data is stored in memory for testing; no live database transmission occurs.
+            </div>
           </div>
         </div>
       </div>
@@ -108,7 +108,7 @@ export const Step4FinalReview: React.FC<Step4FinalReviewProps> = ({
               </div>
 
               <span className="text-xs font-medium text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200 self-start sm:self-center">
-                Ready for ATS Formatting
+                Structured for Future ATS/HRIS Integration
               </span>
             </div>
           ))}

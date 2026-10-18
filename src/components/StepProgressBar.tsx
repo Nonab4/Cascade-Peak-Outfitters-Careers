@@ -39,8 +39,8 @@ export const StepProgressBar: React.FC<StepProgressBarProps> = ({
             {STEPS.map((stepMeta) => {
               const isCurrent = currentStep === stepMeta.step;
               const isCompleted = currentStep > stepMeta.step;
-              // Allow users to go backward to previously completed steps, but not jump forward past required validation
-              const isClickable = stepMeta.step < currentStep && stepMeta.step !== 5;
+              // Allow users to go backward to previously completed steps prior to Step 5, but lock finalized applications
+              const isClickable = currentStep !== 5 && stepMeta.step < currentStep && stepMeta.step !== 5;
               const Icon = stepMeta.icon;
 
               return (

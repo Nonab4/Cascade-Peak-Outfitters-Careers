@@ -152,7 +152,7 @@ export const PrototypeOverviewModal: React.FC<PrototypeOverviewModalProps> = ({
           {/* Executive Summary of the Business Problem */}
           <div className="p-4 bg-stone-50 rounded-xl border border-stone-200/80 text-xs text-stone-700 leading-relaxed">
             <span className="font-bold text-stone-900 block mb-1">Business Problem Summary:</span>
-            Cascade Peak Outfitters receives about <strong>4,800 applications per year</strong> and currently faces significant operational bottlenecks: manual data entry, incomplete applications, long processing times, and high applicant drop-off. This prototype was built to demonstrate how automated CV extraction, real-time validation, and multi-position selection are designed to reduce HR labor, improve data quality, and streamline applicant intake.
+            Cascade Peak Outfitters received <strong>approximately 4,800 applications last year</strong> and faced significant operational bottlenecks: manual data entry, incomplete applications, long processing times, and high applicant drop-off. This prototype was built to demonstrate how automated CV extraction, real-time validation, and multi-position selection are designed to reduce HR labor, improve data quality, and streamline applicant intake.
           </div>
 
           {/* Current Operational Baselines */}
@@ -310,7 +310,7 @@ export const PrototypeOverviewModal: React.FC<PrototypeOverviewModalProps> = ({
           <div className="p-3.5 bg-stone-100 rounded-xl text-xs text-stone-600 flex items-start gap-2">
             <Info className="w-4 h-4 text-stone-500 shrink-0 mt-0.5" />
             <div>
-              <span className="font-semibold text-stone-800">Front-End Prototype Scope:</span> This tool demonstrates front-end data collection, validation, and standardized formatting ready for future ATS and HRIS integration. No permanent records or live databases are connected in this prototype.
+              <span className="font-semibold text-stone-800">Front-End Prototype Scope:</span> This tool demonstrates front-end data collection, validation, and standardized formatting structured for future ATS/HRIS integration. Data is currently stored only in memory; permanent storage, security hardening, database design, and integrations would be developed later by the IT team.
             </div>
           </div>
         </div>

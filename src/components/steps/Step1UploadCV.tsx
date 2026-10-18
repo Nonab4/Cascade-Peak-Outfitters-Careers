@@ -478,13 +478,13 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
             Upload Your Resume or CV
           </h2>
           <p className="text-stone-600 text-sm sm:text-base mt-2 leading-relaxed">
-            Cascade Peak Outfitters receives about 4,800 applications per year. This prototype is designed to reduce manual data entry and applicant drop-off by automatically extracting your contact information, work history, education, and skills.
+            Cascade Peak Outfitters received approximately 4,800 applications last year. This prototype is designed to reduce manual data entry and applicant drop-off by automatically extracting your contact information, work history, education, and skills.
           </p>
 
           <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-stone-500 pt-3 border-t border-stone-100">
             <div className="flex items-center gap-1.5 text-stone-700">
               <ShieldCheck className="w-4 h-4 text-emerald-700" />
-              <span>Strict Data Integrity: No invented information</span>
+              <span>Missing information is left blank for applicant review</span>
             </div>
             <div className="flex items-center gap-1.5 text-stone-700">
               <Zap className="w-4 h-4 text-emerald-700" />
@@ -492,7 +492,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
             </div>
             <div className="flex items-center gap-1.5 text-stone-700">
               <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-              <span>Review and edit in Step 2</span>
+              <span>AI-extracted details are reviewed and corrected by applicant</span>
             </div>
           </div>
         </div>
@@ -615,7 +615,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
         {activeTab === 'samples' && (
           <div className="mt-6 space-y-4">
             <div className="p-3 bg-stone-100/80 rounded-lg text-xs text-stone-700">
-              Select one of these realistic resumes to immediately test the recruitment intake workflow without having to find a file on your device.
+              Select one of these realistic resumes to immediately test the recruitment intake workflow using prepared structured sample data without relying on live AI extraction.
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -659,7 +659,7 @@ export const Step1UploadCV: React.FC<Step1UploadCVProps> = ({
                     )}
 
                     <div className="mt-4 pt-3 border-t border-stone-100 flex items-center justify-between text-xs font-semibold text-emerald-800">
-                      <span>Click to Parse</span>
+                      <span>Load Sample</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </div>
                   </div>

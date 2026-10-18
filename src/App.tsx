@@ -20,6 +20,7 @@ import {
   ApplicationSubmission,
 } from './types/application';
 import { Mountain, Compass, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import heroCascadeMountains from './assets/images/hero_cascade_mountains_1792103902490.jpg';
 
 export default function App() {
   const [currentStep, setCurrentStep] = useState<ApplicationStep>(1);
@@ -97,7 +98,7 @@ export default function App() {
       applicant: applicantData,
       selectedPositions,
       accuracyCertified: true,
-      notes: 'Front-end prototype submission. Standardized record formatted for future ATS/database integration.',
+      notes: 'Front-end prototype submission. Standardized record structured for future ATS/HRIS integration. Stored in memory only.',
     };
 
     setSubmission(finalSubmission);
@@ -144,6 +145,8 @@ export default function App() {
       <StepProgressBar
         currentStep={currentStep}
         onNavigateStep={(step) => {
+          // Locked finalized applications cannot navigate back to steps 1-4
+          if (currentStep === 5) return;
           setCurrentStep(step);
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
@@ -173,7 +176,7 @@ export default function App() {
               <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs">
                 <div className="relative h-48 overflow-hidden bg-stone-900">
                   <img
-                    src="/src/assets/images/hero_cascade_mountains_1792103902490.jpg"
+                    src={heroCascadeMountains}
                     alt="Cascade Mountains Pacific Northwest trail view"
                     className="w-full h-full object-cover opacity-90"
                     referrerPolicy="no-referrer"
@@ -197,11 +200,11 @@ export default function App() {
                   <div className="pt-3 border-t border-stone-100 space-y-2 text-xs text-stone-700">
                     <div className="flex items-center gap-2">
                       <Compass className="w-4 h-4 text-emerald-800 shrink-0" />
-                      <span>~4,800 Applications Received Annually</span>
+                      <span>Approximately 4,800 Applications Last Year</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <ShieldCheck className="w-4 h-4 text-emerald-800 shrink-0" />
-                      <span>No Hallucinated or Invented Information</span>
+                      <span>Missing information is left blank for applicant review</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-800 shrink-0" />
@@ -231,7 +234,7 @@ export default function App() {
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-emerald-400 font-bold">·</span>
-                    <span>Standardize data for future ATS readiness</span>
+                    <span>Structured for future ATS/HRIS integration</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-emerald-400 font-bold">·</span>
@@ -296,8 +299,8 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-6 text-[11px] text-stone-500">
-            <span>Prepared for Future ATS Integration</span>
-            <span className="font-mono">No Live Database Storage</span>
+            <span>Structured for Future ATS/HRIS Integration</span>
+            <span className="font-mono">In-Memory Prototype (No Live Database)</span>
           </div>
         </div>
       </footer>

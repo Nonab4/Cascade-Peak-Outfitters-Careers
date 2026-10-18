@@ -65,6 +65,9 @@ export const Step3SelectPositions: React.FC<Step3SelectPositionsProps> = ({
             <p className="text-stone-600 text-sm mt-1 max-w-2xl">
               Applicants may apply for one or more available roles at Cascade Peak Outfitters. Select all positions matching your background and career goals.
             </p>
+            <p className="text-stone-400 text-[11px] mt-1 italic">
+              Role details shown are prototype descriptions provided for application testing.
+            </p>
           </div>
 
           <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2 text-center shrink-0">

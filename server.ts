@@ -291,7 +291,7 @@ async function handleExtractResume(req: express.Request, res: express.Response) 
     }
 
     const systemInstruction = `You are an applicant data extraction specialist for the Cascade Peak Outfitters recruitment portal prototype.
-The company receives about 4,800 applications per year and is testing this front-end prototype to standardize applicant intake.
+The company received approximately 4,800 applications last year and is testing this front-end prototype to standardize applicant intake.
 
 CRITICAL DOCUMENT CLASSIFICATION & DATA QUALITY INSTRUCTIONS:
 1. DOCUMENT CLASSIFICATION:
@@ -328,7 +328,7 @@ CRITICAL DOCUMENT CLASSIFICATION & DATA QUALITY INSTRUCTIONS:
 10. DATES: Normalize dates into standard readable formats. For education, graduationYear must be a 4-digit year (e.g. "2022") if explicitly stated; otherwise leave empty string "".
 11. FACTUAL INTEGRITY: Do NOT include fictional company facts, salaries, or marketing claims.`;
 
-    // Diagnostic logging for DOCX resumes in development
+    // Diagnostic logging for DOCX resumes in development (sanitized: no personal info logged)
     const isDocx = cleanMimeType.includes('wordprocessingml') || cleanFileName.toLowerCase().endsWith('.docx');
     if (isDocx) {
       const emailMatches = extractedPlainText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
@@ -340,9 +340,8 @@ CRITICAL DOCUMENT CLASSIFICATION & DATA QUALITY INSTRUCTIONS:
         .find((l: string) => l.length >= 2 && l.length <= 40 && !l.includes('@') && !/http|resume|cv|curriculum|phone|email|contact/i.test(l));
 
       console.log(`[DocxDiagnostic] File: "${cleanFileName}" | Character count: ${extractedPlainText.length}`);
-      console.log(`[DocxDiagnostic] First ~500 chars:\n${first500}`);
-      console.log(`[DocxDiagnostic] Email found: ${emailMatches ? emailMatches[0] : 'None detected'}`);
-      console.log(`[DocxDiagnostic] Likely applicant name near beginning: ${likelyNameInFirstLines || 'None detected'}`);
+      console.log(`[DocxDiagnostic] Email detected: ${Boolean(emailMatches && emailMatches.length > 0)}`);
+      console.log(`[DocxDiagnostic] Likely applicant name detected: ${Boolean(likelyNameInFirstLines)}`);
     }
 
     // Determine if extracted PDF text is usable (approx 200+ characters with normal letters/words)

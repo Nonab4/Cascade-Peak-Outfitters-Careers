@@ -50,7 +50,7 @@ export const AvailableRolesModal: React.FC<AvailableRolesModalProps> = ({
               Available Positions (6)
             </h2>
             <p className="text-xs text-stone-500 mt-1">
-              Read-only overview of currently open positions across Cascade Peak Outfitters.
+              Read-only overview of currently open positions across Cascade Peak Outfitters. Role details shown are prototype descriptions provided for application testing.
             </p>
           </div>
 

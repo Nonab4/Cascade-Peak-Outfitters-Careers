@@ -14,7 +14,7 @@ export const BusinessImpactBanner: React.FC<BusinessImpactBannerProps> = () => {
             <div className="flex items-center gap-2 text-xs font-semibold text-white">
               <span>Cascade Peak Outfitters Recruitment Intake Prototype</span>
               <span className="text-emerald-400 font-mono text-[11px] font-normal">
-                · Current Operational Baselines (~4,800 Applications/Year)
+                · Current Operational Baselines (~4,800 Applications Last Year)
               </span>
             </div>
             <p className="text-xs text-stone-400 mt-0.5 max-w-3xl leading-relaxed">

@@ -38,7 +38,7 @@ export const Step5Complete: React.FC<Step5CompleteProps> = ({
         <div className="mt-5 max-w-2xl mx-auto p-3.5 bg-stone-50 border border-stone-200 rounded-xl text-left text-xs text-stone-600 flex items-start gap-2.5">
           <Info className="w-4 h-4 text-emerald-800 shrink-0 mt-0.5" />
           <div>
-            <span className="font-semibold text-stone-900">Front-End Prototype Notice:</span> This application data has been standardized and structured in memory. It is ready for future ATS and HRIS integration; no live external database records are created in this prototype.
+            <span className="font-semibold text-stone-900">Front-End Prototype Notice:</span> This application data has been standardized and structured in memory for testing. It is structured for future ATS/HRIS integration; permanent database storage, security rules, and production integrations would be implemented later by the IT team.
           </div>
         </div>
 
